@@ -1,3 +1,5 @@
+const std = @import("std");
+
 pub const Token = union(enum) {
     Char: u8,
     Star,
@@ -18,37 +20,27 @@ pub const Token = union(enum) {
     Eof,
 
     pub fn eql(lhs: Token, rhs: Token) bool {
-        return switch (lhs) {
-            .Eof => switch(rhs) {
-                .Eof => true,
-                else => false,
-            },
-            .LBrace => switch (rhs) {
-                .LBrace => true,
-                else => false,
-            },
-            .LBracket => switch (rhs) {
-                .LBracket => true,
-                else =>  false,
-            },
-            .RBracket => switch (rhs) {
-                .RBracket => true,
-                else => false,
-            },
-            .Star => switch (rhs) {
-                .Star => true,
-                else =>  false,
-            },
-            .Char => switch (rhs) {
-                .Char => lhs.Char == rhs.Char,
-                else => false,
-            },
-            else => false,
-        };
+        const lhsType = @intFromEnum(lhs);
+        const rhsType = @intFromEnum(rhs);
+
+        if (lhsType != rhsType) 
+            return false;
+        
+        if (lhsType == @intFromEnum(Token.Char) and lhs.Char != rhs.Char) 
+            return false;
+
+        return true;
+    }
+
+    pub fn toUsize(self: Token) usize {
+        return @intFromEnum(self);
     }
 };
 
+
 pub const Tokenizer = struct {
+    pub const TokenCount = @typeInfo(Token).@"union".fields.len;
+
     input: []const u8,
     index: usize,
 

@@ -17,11 +17,18 @@ const RegexNode = ParserModule.RegexNode;
 const BUF_SIZE: usize = 4096;
 
 pub fn main() !void {
+    // std.debug.print("{any}\n", .{@typeInfo(Token).@"union".fields.len});
 
     var gpa: std.heap.DebugAllocator(.{}) = .init;
     defer _ = gpa.deinit();
 
     const alloc = gpa.allocator();
+
+
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+
+    const aAlloc = arena.allocator();
 
     var stdinReader = stdin.reader();
     var buf: [BUF_SIZE:0]u8 = .{0} ** BUF_SIZE;
@@ -38,26 +45,12 @@ pub fn main() !void {
         }
 
         const line = std.mem.trimRight(u8, buf[0..], "\n\x00");
-        var parser = try Parser.init(alloc, line);
+        var parser = try Parser.init(aAlloc, line);
         const head = try parser.parse();
-        print("{}\n", .{head});
+        head.dump(0);
     }
 }
 
-test "simple test" {
-    var list = std.ArrayList(i32).init(std.testing.allocator);
-    defer list.deinit(); // Try commenting this out and see if zig detects the memory leak!
-    try list.append(42);
-    try std.testing.expectEqual(@as(i32, 42), list.pop());
-}
+test "basic regex test" {
 
-test "fuzz example" {
-    const Context = struct {
-        fn testOne(context: @This(), input: []const u8) anyerror!void {
-            _ = context;
-            // Try passing `--fuzz` to `zig build test` and see if it manages to fail this test case!
-            try std.testing.expect(!std.mem.eql(u8, "canyoufindme", input));
-        }
-    };
-    try std.testing.fuzz(Context{}, Context.testOne, .{});
 }

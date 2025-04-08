@@ -5,12 +5,12 @@
 #include <stdio.h>
 %}
 
-DIGIT    ([0-9]\)\1
+DIGIT    [0-9]$
 ID       [a-z][a-z0-9]*
 
 %%
 
-{DIGIT}+ {
+{DIGIT} {
    printf("An integer: %s (%d)\n", yytext,
 	   atoi(yytext));
 }

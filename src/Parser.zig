@@ -1,22 +1,39 @@
-const std = @import("std");
-const TokenizerModule = @import("Tokenizer.zig");
+const std               = @import("std");
+const TokenizerModule   = @import("Tokenizer.zig");
 
-const Tokenizer = TokenizerModule.Tokenizer;
-const Token     = TokenizerModule.Token;
-const Makers = @import("ParserMakers.zig");
-const log = std.log;
+const Tokenizer         = TokenizerModule.Tokenizer;
+const Token             = TokenizerModule.Token;
+const RegexNodeDump     = @import("RegexNodeDump.zig");
+const log               = std.log;
+const Lookup            = @import("Lookup.zig");
+const Makers            = @import("ParserMakers.zig");
 
 pub const Parser = @This();
 
+const ParserErrorSet = error {
+    PrefixUnexpected,
+    InfixUnexpected,
+    BracketExpOutOfOrder,
+    BracketExpUnexpectedChar,
+    MalformedBracketExp,
+};
+
+pub const BindingPower = enum(u8) {
+    None = 0,
+    Alternation,
+    Anchoring,
+    Concatenation,
+    Duplication,
+    Grouping,
+    Bracket,
+    Escaped,
+};
 
 pub const RegexNode = union(enum) {
     Char: u8,
-    Star: *RegexNode,
-    Plus: *RegexNode,
-    Optional: *RegexNode,
     Group: *RegexNode,
-    AnchorStart,
-    AnchorEnd,
+    AnchorStart: *RegexNode,
+    AnchorEnd: *RegexNode,
     CharClass: struct {
         negate: bool,
         range: std.StaticBitSet(255),
@@ -29,40 +46,36 @@ pub const RegexNode = union(enum) {
         left: *RegexNode,
         right: *RegexNode,
     },
-    Repeat: struct {
+    Repetition: struct {
         min: usize,
         max: ?usize,
-        node: *RegexNode,
+        left: *RegexNode,
     },
 
-    pub fn format(self: *const RegexNode, comptime fmt: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
-        _ = fmt;
-        switch (self.*) {
-            .CharClass => {
-                var buffer: [255]u8 = .{0} ** 255;
-                var bufIt: usize = 0;
-                for (0..255) |i| {
-                    if (self.CharClass.range.isSet(i)) {
-                        buffer[bufIt] = @as(u8, @intCast(i));
-                        bufIt += 1;
-                    }
-                }
-                try writer.print("CharClass({}): {s}", .{self.CharClass.negate, buffer});
-            },
-            else => try writer.print("{}", .{self}),
-        }
-    }
+    pub const dump = RegexNodeDump.dump;
 };
 
+const nud_handler_fn = *const fn (self: *Parser) ParserError!*RegexNode;
+const led_handler_fn = *const fn (self: *Parser, left: *RegexNode) ParserError!*RegexNode;
+const fillLookupTables = Lookup.fillLookupTables;
+
+pub const makeNode = Makers.makeNode;
+pub const makeRepetition = Makers.makeRepetition;
+pub const makeAlternation = Makers.makeAlternation;
+pub const makeConcat = Makers.makeConcat;
+pub const makeAnchorEnd = Makers.makeAnchorEnd;
 
 tokenizer: Tokenizer,
 current: Token,
 alloc: std.mem.Allocator,
+nud_lookup: ?[Tokenizer.TokenCount]?nud_handler_fn = null,
+led_lookup: ?[Tokenizer.TokenCount]?led_handler_fn = null,
+bp_lookup: ?[Tokenizer.TokenCount]?BindingPower = null,
 
 pub fn init(alloc: std.mem.Allocator, input: []const u8) !Parser {
     var tokenizer = Tokenizer.init(input);
     const first_token = tokenizer.next();
-    std.log.info("Token: {}", .{first_token});
+
     return .{
         .tokenizer = tokenizer,
         .current = first_token,
@@ -70,11 +83,12 @@ pub fn init(alloc: std.mem.Allocator, input: []const u8) !Parser {
     };
 }
 
-pub const makeConcat = Makers.makeConcat;
-
-pub fn advance(self: *Parser) void {
+// INFO: Returns the previous token
+pub fn advance(self: *Parser) Token {
+    const token = self.current;
     self.current = self.tokenizer.next();
     std.log.info("Token: {}", .{self.current});
+    return token;
 }
 
 pub fn match(self: *Parser, token: Token) bool { return Token.eql(self.current, token); }
@@ -83,107 +97,61 @@ pub fn matchNoSpecial(self: *Parser) bool {
     return !self.match(.Eof) and !self.match(.Escape);
 }
 
-pub fn parseBracketExp(self: *Parser) !*RegexNode {
-    var range = std.StaticBitSet(255).initEmpty();
-    const negate = false;
+pub const ParserError = ParserErrorSet || error { OutOfMemory };
 
-    //NOTE: Skip LBracket
-    self.advance();
-
-    while (true) {
-        std.debug.print("CURRENT: {}\n", .{self.current});
-        if (self.match(.Eof)) return error.MalformedBracketExp; //NOTE: Shouldn't reach EOF in a bracketExp
-        if (self.match(.RBracket)) break; //NOTE: g2g
-        
-        if (self.matchPeak(.{ .Char = '-' }) and self.matchNoSpecial()) {
-            const rangeStart = self.current.Char;
-            self.advance();
-            self.advance();
-            if (!self.matchNoSpecial()) return error.BracketExpUnexpectedChar; //NOTE: Eof or escape
-
-            const rangeEnd = self.current.Char;
-            if (rangeEnd < rangeStart) return error.BracketExpOutOfOrder;
-            for (rangeStart..rangeEnd) |i| {
-                range.set(@as(u8, @intCast(i)));
-            }
-        }
-
-        if (self.matchNoSpecial()) {
-            range.set(self.current.Char);
-            self.advance();
-        }
-    }
-    self.advance(); //NOTE: Consume RBracket
-    const ptr = try self.alloc.create(RegexNode);
-    ptr.* = RegexNode { .CharClass = .{ .negate = negate, .range = range } };
-    return ptr;
-}
-
-const Precedence = enum(u8) {
-    Bracket = 4,
-    Star = 3,
-    Concat = 2,
-    Alternation = 1,
-    None = 0,
-};
-
-pub fn peekPrecedence(self: Parser) Precedence {
-    return switch (self.current) {
-        .LBracket => .Bracket,
-        .Star => .Star,
-        .Union => .Alternation,
-        .Char => .Concat,
-        else => .None,
-    };
-}
-
-pub fn parsePrefix(self: *Parser) !*RegexNode {
-    return switch (self.current) {
-        .Char => {
-            const ptr = try self.alloc.create(RegexNode);
-            ptr.* = RegexNode{ .Char = self.current.Char };
-            return ptr;
-        },
-        .LBracket => try self.parseBracketExp(),
-        else => error.PrefixUnexpected,
-    };
-}
-
-pub fn parseInfix(self: *Parser, left: *RegexNode) !*RegexNode {
+pub fn getBp(self: Parser) BindingPower {
+    std.debug.assert(self.bp_lookup != null);
     const token = self.current;
 
-    return switch (token) {
-        .Char => error.InfixUnexpected,
-        // .Union => {
-        //     self.advance();
-        //     const right = try self.parseExpression(Precedence.Alternation);
-        //     return RegexNode{ .Alternation = .{ .left = left, .right = right } };
-        // },
-        .Star => {
-            self.advance();
-            const ptr = try self.alloc.create(RegexNode);
-            ptr.* = RegexNode{ .Star = left };
-            return ptr;
-        },
-        else => error.InfixUnexpected,
-    };
-}
-
-pub fn parseExp(self: *Parser, min_prec: Precedence) !*RegexNode {
-    var left = try self.parsePrefix();
-
-    while (true) {
-        const prec = self.peekPrecedence();
-        if (@intFromEnum(prec) < @intFromEnum(min_prec))
-            break;
-
-        self.advance();
-        left = try self.parseInfix(left);
+    if (self.bp_lookup.?[@intFromEnum(token)] == null) {
+        std.debug.panic("Unimplemented nud function for token: {s}", .{@tagName(token)});
     }
 
+    return self.bp_lookup.?[@intFromEnum(token)].?;
+}
+
+pub fn nud(self: *Parser) ParserError!*RegexNode {
+    std.debug.assert(self.nud_lookup != null);
+    const token = self.current;
+
+    if (self.nud_lookup.?[@intFromEnum(token)] == null) {
+        std.debug.panic("Unimplemented nud function for token: {s}", .{@tagName(token)});
+    }
+
+    return self.nud_lookup.?[@intFromEnum(token)].?(self);
+}
+
+pub fn led(self: *Parser, left: *RegexNode) ParserError!*RegexNode {
+    std.debug.assert(self.led_lookup != null);
+    const token = self.current;
+
+    if (self.led_lookup.?[@intFromEnum(token)] == null) {
+        std.debug.panic("Unimplemented led function for token: {s}", .{@tagName(token)});
+    }
+
+    return self.led_lookup.?[@intFromEnum(token)].?(self, left);
+}
+
+pub fn parseExpr(self: *Parser, min_bp: BindingPower) ParserError!*RegexNode {
+    var left = try self.nud();
+
+    while (self.current != .Eof) {
+        const cur_bp = self.getBp();
+
+        if (@intFromEnum(cur_bp) < @intFromEnum(min_bp))
+            break;
+
+        left = try self.led(left);
+    }
     return left;
 }
 
 pub fn parse(self: *Parser) !*RegexNode {
-    return try self.parseExp(.None);
+    //INFO: We can't fill the lookup tables at comptime since this struct isn't itself comptime so we fill it before parsing starts.
+    //No need to refill it if we reuse the Parser
+    if (self.bp_lookup == null or self.nud_lookup == null or self.led_lookup == null) {
+        self.fillLookupTables();
+    }
+
+    return self.parseExpr(.None);
 }
