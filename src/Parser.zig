@@ -13,6 +13,7 @@ pub const Parser = @This();
 const ParserErrorSet = error {
     PrefixUnexpected,
     InfixUnexpected,
+    BracesExpUnexpectedChar,
     BracketExpOutOfOrder,
     BracketExpUnexpectedChar,
     MalformedBracketExp,
@@ -34,6 +35,7 @@ pub const RegexNode = union(enum) {
     Group: *RegexNode,
     AnchorStart: *RegexNode,
     AnchorEnd: *RegexNode,
+    Dot,
     CharClass: struct {
         negate: bool,
         range: std.StaticBitSet(255),
@@ -57,17 +59,12 @@ pub const RegexNode = union(enum) {
 
 const nud_handler_fn = *const fn (self: *Parser) ParserError!*RegexNode;
 const led_handler_fn = *const fn (self: *Parser, left: *RegexNode) ParserError!*RegexNode;
-const fillLookupTables = Lookup.fillLookupTables;
 
-pub const makeNode = Makers.makeNode;
-pub const makeRepetition = Makers.makeRepetition;
-pub const makeAlternation = Makers.makeAlternation;
-pub const makeConcat = Makers.makeConcat;
-pub const makeAnchorEnd = Makers.makeAnchorEnd;
+const fillLookupTables = Lookup.fillLookupTables;
 
 tokenizer: Tokenizer,
 current: Token,
-alloc: std.mem.Allocator,
+pool: std.heap.MemoryPool(RegexNode),
 nud_lookup: ?[Tokenizer.TokenCount]?nud_handler_fn = null,
 led_lookup: ?[Tokenizer.TokenCount]?led_handler_fn = null,
 bp_lookup: ?[Tokenizer.TokenCount]?BindingPower = null,
@@ -75,12 +72,17 @@ bp_lookup: ?[Tokenizer.TokenCount]?BindingPower = null,
 pub fn init(alloc: std.mem.Allocator, input: []const u8) !Parser {
     var tokenizer = Tokenizer.init(input);
     const first_token = tokenizer.next();
+    const pool  = std.heap.MemoryPool(RegexNode).init(alloc);
 
     return .{
         .tokenizer = tokenizer,
         .current = first_token,
-        .alloc = alloc,
+        .pool = pool,
     };
+}
+
+pub fn deinit(self: *Parser) void {
+    self.pool.deinit();
 }
 
 // INFO: Returns the previous token

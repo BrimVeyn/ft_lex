@@ -16,7 +16,6 @@ pub const Token = union(enum) {
     RBracket,
     LBrace,
     RBrace,
-    Comma,
     Eof,
 
     pub fn eql(lhs: Token, rhs: Token) bool {
@@ -65,7 +64,6 @@ pub const Tokenizer = struct {
                 ']' => Token.RBracket,
                 '{' => Token.LBrace,
                 '}' => Token.RBrace,
-                ',' => Token.Comma,
                 '^' => Token.AnchorStart,
                 '$' => Token.AnchorEnd,
                 '|' => Token.Union,

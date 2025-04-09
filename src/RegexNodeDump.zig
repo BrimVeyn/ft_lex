@@ -16,6 +16,14 @@ pub fn dump(self: *const RegexNode, indent: usize) void {
     }
 
     switch (self.*) {
+        .Dot => {
+            std.debug.print("{s}{s}{s}{s}\n", .{
+                pad,
+                Green,
+                @tagName(.Dot),
+                Reset
+            });
+        },
         .Char => {
             std.debug.print("{s}{s}{s}{s}({c})\n", .{
                 pad,

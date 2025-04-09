@@ -15,19 +15,22 @@ pub fn fillLookupTables(self: *Parser) void {
     self.bp_lookup = .{ null } ** Tokenizer.TokenCount;
     
     if (self.nud_lookup) |*nuds| {
+        nuds[@intFromEnum(Token.LBracket)] = &Makers.makeBracketExpr;
         nuds[@intFromEnum(Token.Char)] = &Makers.makeChar;
-        nuds[@intFromEnum(Token.LBracket)] = &Makers.makeBracketExp;
+        nuds[@intFromEnum(Token.Dot)] = &Makers.makeDot;
         nuds[@intFromEnum(Token.AnchorStart)] = &Makers.makeAnchorStart;
     }
 
     if (self.led_lookup) |*leds| {
-        leds[@intFromEnum(Token.AnchorEnd)] = &Makers.makeAnchorEnd;
         leds[@intFromEnum(Token.Star)] = &Makers.makeRepetition;
         leds[@intFromEnum(Token.Plus)] = &Makers.makeRepetition;
+        leds[@intFromEnum(Token.LBrace)] = &Makers.makeRepetition;
         leds[@intFromEnum(Token.Question)] = &Makers.makeRepetition;
-        leds[@intFromEnum(Token.Union)] = &Makers.makeAlternation;
         leds[@intFromEnum(Token.LBracket)] = &Makers.makeConcat;
+        leds[@intFromEnum(Token.Dot)] = &Makers.makeConcat;
         leds[@intFromEnum(Token.Char)] = &Makers.makeConcat;
+        leds[@intFromEnum(Token.AnchorEnd)] = &Makers.makeAnchorEnd;
+        leds[@intFromEnum(Token.Union)] = &Makers.makeAlternation;
     }
 
     if (self.bp_lookup) |*bps| {
@@ -36,6 +39,7 @@ pub fn fillLookupTables(self: *Parser) void {
         bps[@intFromEnum(Token.Plus)] = .Duplication;
         bps[@intFromEnum(Token.Question)] = .Duplication;
         bps[@intFromEnum(Token.LBrace)] = .Duplication;
+        bps[@intFromEnum(Token.Dot)] = .Concatenation;
         bps[@intFromEnum(Token.Char)] = .Concatenation;
         bps[@intFromEnum(Token.AnchorStart)] = .Anchoring;
         bps[@intFromEnum(Token.AnchorEnd)] = .Anchoring;

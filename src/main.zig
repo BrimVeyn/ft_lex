@@ -1,34 +1,28 @@
-const std = @import("std");
-const stdin = std.io.getStdIn();
-const print = std.debug.print;
-const log = std.log;
-const Allocator = std.mem.Allocator;
-const VectU = std.ArrayListUnmanaged;
-const Vect = std.ArrayList;
+const std               = @import("std");
+const TokenizerModule   = @import("Tokenizer.zig");
+const ParserModule      = @import("Parser.zig");
+const NFAModule         = @import("NFA.zig");
+const stdin             = std.io.getStdIn();
+const print             = std.debug.print;
+const log               = std.log;
+const Allocator         = std.mem.Allocator;
+const VectU             = std.ArrayListUnmanaged;
+const Vect              = std.ArrayList;
 
-const TokenizerModule = @import("Tokenizer.zig");
-const ParserModule = @import("Parser.zig");
+const Tokenizer         = TokenizerModule.Tokenizer;
+const Token             = TokenizerModule.Token;
 
-const Tokenizer = TokenizerModule.Tokenizer;
-const Token = TokenizerModule.Token;
-const Parser = ParserModule.Parser;
-const RegexNode = ParserModule.RegexNode;
+const Parser            = ParserModule.Parser;
+const RegexNode         = ParserModule.RegexNode;
+const NFA               = NFAModule.NFA;
+
 
 const BUF_SIZE: usize = 4096;
 
 pub fn main() !void {
-    // std.debug.print("{any}\n", .{@typeInfo(Token).@"union".fields.len});
-
     var gpa: std.heap.DebugAllocator(.{}) = .init;
     defer _ = gpa.deinit();
-
     const alloc = gpa.allocator();
-
-
-    var arena = std.heap.ArenaAllocator.init(alloc);
-    defer arena.deinit();
-
-    const aAlloc = arena.allocator();
 
     var stdinReader = stdin.reader();
     var buf: [BUF_SIZE:0]u8 = .{0} ** BUF_SIZE;
@@ -45,9 +39,15 @@ pub fn main() !void {
         }
 
         const line = std.mem.trimRight(u8, buf[0..], "\n\x00");
-        var parser = try Parser.init(aAlloc, line);
+        var parser = try Parser.init(alloc, line);
+        defer parser.deinit();
+
         const head = try parser.parse();
         head.dump(0);
+        var nfaBuilder = try NFAModule.NFABuilder.init(alloc, head);
+        const nfa = try nfaBuilder.astToNfa(nfaBuilder.ast_head);
+        try nfa.printStates(alloc, .Human);
+        try nfa.printStates(alloc, .Dot);
     }
 }
 

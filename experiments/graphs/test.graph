@@ -1,0 +1,13 @@
+digraph test123 {
+    rankdir=LR;
+    node [shape=circle];
+
+    start [shape=plaintext,label=""];
+    start -> 0;
+
+	0 -> 1 [label="a"]
+	1 -> 2 [label="ε"]
+	2 -> 3 [label="b"]
+	3 -> 4 [label="ε"]
+	4 -> 5 [label="c"]
+}

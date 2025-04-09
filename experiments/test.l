@@ -5,7 +5,7 @@
 #include <stdio.h>
 %}
 
-DIGIT    [0-9]$
+DIGIT    [0-9]{2}
 ID       [a-z][a-z0-9]*
 
 %%

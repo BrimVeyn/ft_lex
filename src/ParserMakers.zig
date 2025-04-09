@@ -1,66 +1,35 @@
-const std           = @import("std");
-const ParserModule  = @import("Parser.zig");
-const ParserError   = ParserModule.ParserError;
-const RegexNode     = ParserModule.RegexNode;
-const Parser        = ParserModule.Parser;
+const std               = @import("std");
+const ParserModule      = @import("Parser.zig");
+const TokenizerModule   = @import("Tokenizer.zig");
+const ParserError       = ParserModule.ParserError;
+const RegexNode         = ParserModule.RegexNode;
+const Parser            = ParserModule.Parser;
+const Token             = TokenizerModule.Token;
 
-pub fn makeNode(self: *Parser) !*RegexNode {
-    return try self.alloc.create(RegexNode);
+pub fn makeNode(self: *Parser, node: RegexNode) ParserError!*RegexNode {
+    const ret = try self.pool.create();
+    ret.* = node;
+    return ret;
 }
 
-pub fn makeConcat(self: *Parser, left: *RegexNode) ParserError!*RegexNode {
-    const node = try self.makeNode();
-    node.* = .{
-        .Concat = .{
-            .left = left,
-            .right = try self.parseExpr(.Concatenation),
-        },
-    };
-    return node;
-}
-
-
-
-pub fn makeAlternation(self: *Parser, left: *RegexNode) ParserError!*RegexNode {
-    _ = self.advance();
-    const node = try self.makeNode();
-    node.* = .{
-        .Alternation = .{
-            .left = left,
-            .right = try self.parseExpr(.Alternation),
-        },
-    };
-    return node;
-}
-
+//INFO: ------------------- NUDS ---------------------
 pub fn makeChar(self: *Parser) ParserError!*RegexNode {
-    const node = try self.makeNode();
-    const char = self.advance().Char;
-    node.* = .{
-        .Char = char,
-    };
-    return node;
+    return makeNode(self, .{ .Char = self.advance().Char });
+}
+
+pub fn makeDot(self: *Parser) ParserError!*RegexNode {
+    _ = self.advance();
+    return makeNode(self, .Dot);
 }
 
 pub fn makeAnchorStart(self: *Parser) ParserError!*RegexNode {
     _ = self.advance();
-    const node = try self.makeNode();
-    node.* = .{
+    return makeNode(self, .{ 
         .AnchorStart = try self.parseExpr(.Anchoring),
-    };
-    return node;
+    });
 }
 
-pub fn makeAnchorEnd(self: *Parser, left: *RegexNode) ParserError!*RegexNode {
-    _ = self.advance();
-    const node = try self.makeNode();
-    node.* = .{
-        .AnchorEnd = left,
-    };
-    return node;
-}
-
-pub fn makeBracketExp(self: *Parser) ParserError!*RegexNode {
+pub fn makeBracketExpr(self: *Parser) ParserError!*RegexNode {
     var range = std.StaticBitSet(255).initEmpty();
     const negate = false;
 
@@ -90,56 +59,133 @@ pub fn makeBracketExp(self: *Parser) ParserError!*RegexNode {
         }
     }
     _ = self.advance(); //NOTE: Consume RBracket
-    const ptr = try self.alloc.create(RegexNode);
-    ptr.* = RegexNode { .CharClass = .{ .negate = negate, .range = range } };
-    return ptr;
+    return makeNode(self, .{
+        .CharClass = .{ .negate = negate, .range = range } },
+    );
 }
+
+//INFO:------------------------------------------------
+
+
+
+//INFO:-------------------LEDS-------------------------
+
+pub fn makeConcat(self: *Parser, left: *RegexNode) ParserError!*RegexNode {
+    return makeNode(self, .{
+        .Concat = .{
+            .left = left,
+            .right = try self.parseExpr(.Concatenation),
+        },
+    });
+}
+
+pub fn makeAlternation(self: *Parser, left: *RegexNode) ParserError!*RegexNode {
+    _ = self.advance();
+    return makeNode(self, .{
+        .Alternation = .{ 
+            .left =  left,
+            .right = try self.parseExpr(.Alternation),
+        },
+    });
+}
+
+
+pub fn makeAnchorEnd(self: *Parser, left: *RegexNode) ParserError!*RegexNode {
+    _ = self.advance();
+    return makeNode(self, .{
+        .AnchorEnd = left 
+    });
+}
+
+fn parseInt(self: *Parser) ParserError!usize {
+    var buffer: [16]u8 = .{0} ** 16;
+    var i: usize = 0;
+
+    while (true) {
+        const token = self.current;
+
+        if (token.eql(.{.Char = ','}) or token.eql(.RBrace))
+            break;
+
+        if (std.meta.activeTag(token) != Token.Char or (token.Char < '0' or token.Char > '9')) {
+            return error.BracesExpUnexpectedChar;
+        }
+
+        buffer[i] = token.Char;
+        i += 1;
+        _ = self.advance();
+    }
+    return std.fmt.parseInt(usize, buffer[0..i], 10) catch {
+        return error.BracesExpUnexpectedChar; 
+    };
+}
+
+pub fn makeBracesExpr(self: *Parser, left: *RegexNode) ParserError!*RegexNode {
+    var min: usize = 0;
+    var max: ?usize = null;
+    
+    min = try parseInt(self);
+
+    var current = self.current;
+    std.log.debug("current: {}", .{current});
+
+    if (current.eql(.RBrace)) {
+        _ = self.advance();
+        return makeNode(self, .{ .Repetition = .{ .min = min, .max = min, .left = left }, });
+    }
+
+    if (std.meta.activeTag(current) != Token.Char or current.Char != ',') {
+        std.debug.print("You're on a good way", .{});
+        return error.BracesExpUnexpectedChar;
+    }
+
+    //NOTE: Current is now ','
+    _ = self.advance();
+
+    if (self.current.eql(.RBrace)) {
+        _ = self.advance();
+        return makeNode(self, .{ .Repetition = .{ .min = min, .max = INFINITY, .left = left }, });
+    }
+
+    max = try parseInt(self);
+    std.log.debug("MAX: {?}", .{max});
+    
+    std.debug.assert(self.current.eql(.RBrace));
+    _ = self.advance();
+
+    return makeNode(self, .{ .Repetition = .{ .min = min, .max = max, .left = left } });
+}
+
+
 
 const INFINITY = 10_000_000;
-
-pub fn makeStar(self: *Parser, left: *RegexNode) ParserError!*RegexNode {
-    const node = try self.makeNode();
-    node.* = .{
-        .Repetition = .{
-            .min = 0,
-            .max = INFINITY,
-            .left = left,
-        },
-    };
-    return node;
-}
-
-pub fn makePlus(self: *Parser, left: *RegexNode) ParserError!*RegexNode {
-    const node = try self.makeNode();
-    node.* = .{
-        .Repetition = .{
-            .min = 1,
-            .max = INFINITY,
-            .left = left,
-        },
-    };
-    return node;
-}
-
-pub fn makeQuestion(self: *Parser, left: *RegexNode) ParserError!*RegexNode {
-    const node = try self.makeNode();
-    node.* = .{
-        .Repetition = .{
-            .min = 0,
-            .max = 1,
-            .left = left,
-        },
-    };
-    return node;
-}
-
 
 pub fn makeRepetition(self: *Parser, left: *RegexNode) ParserError!*RegexNode {
     const token = self.advance();
     return switch (token) {
-        .Star => makeStar(self, left),
-        .Plus => makePlus(self, left),
-        .Question => makeQuestion(self, left),
-        else => std.debug.panic("Unsupported repetition tokne: {s}", .{@tagName(self.current)}),
+        .Star => makeNode(self, .{
+            .Repetition = .{ 
+                .min = 0,
+                .max = INFINITY,
+                .left = left 
+            },
+        }),
+        .Plus => makeNode(self, .{
+            .Repetition = .{
+                .min = 1,
+                .max = INFINITY,
+                .left = left 
+            },
+        }),
+        .Question => makeNode(self, .{
+            .Repetition = .{
+                .min = 0,
+                .max = 1,
+                .left = left 
+            },
+        }),
+        .LBrace => makeBracesExpr(self, left),
+        else => std.debug.panic("Unsupported repetition token: {s}", .{@tagName(self.current)}),
     };
 }
+
