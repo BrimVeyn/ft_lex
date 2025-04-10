@@ -16,6 +16,7 @@ const ParserErrorSet = error {
     BracesExpUnexpectedChar,
     BracketExpOutOfOrder,
     BracketExpUnexpectedChar,
+    BracketExpInvalidPosixClass,
     MalformedBracketExp,
 };
 
@@ -38,7 +39,7 @@ pub const RegexNode = union(enum) {
     Dot,
     CharClass: struct {
         negate: bool,
-        range: std.StaticBitSet(255),
+        range: std.StaticBitSet(256),
     },
     Concat: struct {
         left: *RegexNode,
@@ -93,11 +94,12 @@ pub fn advance(self: *Parser) Token {
     return token;
 }
 
-pub fn match(self: *Parser, token: Token) bool { return Token.eql(self.current, token); }
-pub fn matchPeak(self: *Parser, token: Token) bool { return Token.eql(self.tokenizer.peak(), token); }
-pub fn matchNoSpecial(self: *Parser) bool {
-    return !self.match(.Eof) and !self.match(.Escape);
+pub fn peak(self: *Parser) Token {
+    return self.tokenizer.peak();
 }
+
+pub fn currentEql(self: *Parser, token: Token) bool { return Token.eql(self.current, token); }
+pub fn peakEql(self: *Parser, token: Token) bool { return Token.eql(self.tokenizer.peak(), token); }
 
 pub const ParserError = ParserErrorSet || error { OutOfMemory };
 

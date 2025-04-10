@@ -1,10 +1,12 @@
 const std               = @import("std");
+
 const ParserModule      = @import("Parser.zig");
-const TokenizerModule   = @import("Tokenizer.zig");
 const ParserError       = ParserModule.ParserError;
 const RegexNode         = ParserModule.RegexNode;
 const Parser            = ParserModule.Parser;
+const TokenizerModule   = @import("Tokenizer.zig");
 const Token             = TokenizerModule.Token;
+const PosixClass        = TokenizerModule.PosixClass;
 
 pub fn makeNode(self: *Parser, node: RegexNode) ParserError!*RegexNode {
     const ret = try self.pool.create();
@@ -29,36 +31,115 @@ pub fn makeAnchorStart(self: *Parser) ParserError!*RegexNode {
     });
 }
 
-pub fn makeBracketExpr(self: *Parser) ParserError!*RegexNode {
-    var range = std.StaticBitSet(255).initEmpty();
-    const negate = false;
+fn makeBitSet(comptime predicate: fn (u8) bool) std.StaticBitSet(256) {
+    var ret = std.StaticBitSet(256).initEmpty();
+    var i: usize = 0;
+    while (i < 256) : (i += 1) {
+        const iu8: u8 = @intCast(i);
+        if (predicate(iu8)) {
+            ret.set(iu8);
+        }
+    }
+    return ret;
+}
 
-    //NOTE: Skip LBracket
+
+fn fillRange(range: *std.StaticBitSet(256), class: PosixClass) void {
+    range.* = blk: switch (class) {
+        .alpha => break :blk range.unionWith(makeBitSet(std.ascii.isAlphabetic)),
+        .alnum => break :blk range.unionWith(makeBitSet(std.ascii.isAlphanumeric)),
+        .cntrl => break :blk range.unionWith(makeBitSet(std.ascii.isControl)),
+        else => std.debug.panic("Unhandled POSIX class: {}", .{class}),
+    };
+}
+
+
+fn getPosixClass(self: *Parser) ParserError!PosixClass {
+    std.debug.assert(self.currentEql(.{ .Char = '[' }));
+    std.debug.assert(self.peakEql(.{ .Char = ':' }));
     _ = self.advance();
+    _ = self.advance();
+    std.log.debug("[POSIX]: {}", .{self.current});
+
+    var buffer: [256]u8 = .{0} ** 256;
+    var it: usize = 0;
 
     while (true) {
-        if (self.match(.Eof)) return ParserError.MalformedBracketExp; //NOTE: Shouldn't reach EOF in a bracketExp
-        if (self.match(.RBracket)) break; //NOTE: g2g
+        if (self.currentEql(.{ .Char = ':' }) and self.peakEql(.{ .Char = ']' })) {
+            _ = self.advance(); _ = self.advance();
+            break;
+        }
+        buffer[it] = self.current.Char;
+        it += 1;
+        _ = self.advance();
+    }
+
+    return std.meta.stringToEnum(PosixClass, buffer[0..it]) 
+        orelse error.BracketExpInvalidPosixClass;
+}
+
+pub fn makeBracketExpr(self: *Parser) ParserError!*RegexNode {
+    var range = std.StaticBitSet(256).initEmpty();
+    var negate = false;
+
+    //INFO: Change tokenizer context to produce BrackExp tokens
+    self.tokenizer.changeContext(.BracketExp);
+
+    std.debug.assert(self.currentEql(.LBracket));
+    _ = self.advance();
+
+    if (self.currentEql(.{ .Char = '^' })) {
+        negate = true;
+        _ = self.advance();
+    }
+
+    //NOTE: Exception, if the first character is RBracket or Dash, its treated as a literal
+    if (self.currentEql(.{.Char = ']'}) or self.currentEql(.{ .Char = '-' })) {
+        range.set(self.current.Char);
+        _ = self.advance();
+    }
+
+    while (true) {
+        std.log.debug("BRACKET: Current: {any}", .{self.current});
+        if (self.currentEql(.Eof)) 
+            return ParserError.MalformedBracketExp; //NOTE: Shouldn't reach EOF in a bracketExp
+        if (self.currentEql(.{ .Char = ']' })) 
+            break; //NOTE: g2g
+        if (self.currentEql(.{ .Char = '[' }) and self.peakEql(.{ .Char = ':' })) {
+            const class: PosixClass = try getPosixClass(self);
+            fillRange(&range, class);
+            continue;
+        }
         
-        if (self.matchPeak(.{ .Char = '-' }) and self.matchNoSpecial()) {
+        if (self.peakEql(.{ .Char = '-' })) {
             const rangeStart = self.current.Char;
             _ = self.advance();
             _ = self.advance();
-            if (!self.matchNoSpecial()) return error.BracketExpUnexpectedChar; //NOTE: Eof or escape
-
+            if (self.currentEql(.{ .Char = ']' })) {
+                range.set(rangeStart);
+                range.set('-');
+                continue;
+            }
             const rangeEnd = self.current.Char;
-            if (rangeEnd < rangeStart) return error.BracketExpOutOfOrder;
+
+            if (rangeEnd < rangeStart)
+                return error.BracketExpOutOfOrder;
+
             for (rangeStart..rangeEnd) |i| {
                 range.set(@as(u8, @intCast(i)));
             }
+            continue;
         }
 
-        if (self.matchNoSpecial()) {
-            range.set(self.current.Char);
-            _ = self.advance();
-        }
+        range.set(self.current.Char);
+        _ = self.advance();
     }
-    _ = self.advance(); //NOTE: Consume RBracket
+    std.debug.assert(self.currentEql(.{ .Char = ']' }));
+    _ = self.advance();
+
+    //INFO: Restore Regexp Toknizer state
+    self.tokenizer.changeContext(.RegexExp);
+
     return makeNode(self, .{
         .CharClass = .{ .negate = negate, .range = range } },
     );

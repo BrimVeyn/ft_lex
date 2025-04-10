@@ -30,24 +30,55 @@ pub const Token = union(enum) {
 
         return true;
     }
-
-    pub fn toUsize(self: Token) usize {
-        return @intFromEnum(self);
-    }
 };
 
+pub const PosixClass = enum {
+    upper,
+    lower,
+    alpha,
+    digit,
+    xdigit,
+    alnum,
+    punct,
+    blank,
+    space,
+    cntrl,
+    graph,
+    print
+};
 
 pub const Tokenizer = struct {
-    pub const TokenCount = @typeInfo(Token).@"union".fields.len;
-
     input: []const u8,
     index: usize,
+    nextFn: *const fn (self: *Tokenizer) Token,
+
+    pub const TokenizerCtx = enum {
+        BracketExp,
+        RegexExp,
+    };
+
+    pub const TokenCount = @typeInfo(Token).@"union".fields.len;
 
     pub fn init(input: []const u8) Tokenizer {
-        return .{ .input = input, .index = 0 };
+        return .{ 
+            .input = input,
+            .index = 0,
+            .nextFn = &nextRegexExp,
+        };
+    }
+
+    pub fn changeContext(self: *Tokenizer, ctx: TokenizerCtx) void {
+        switch (ctx) {
+            .BracketExp => self.nextFn = &nextBracketExp,
+            .RegexExp => self.nextFn = &nextRegexExp,
+        }
     }
 
     pub fn next(self: *Tokenizer) Token {
+        return self.nextFn(self);
+    }
+
+    pub fn nextRegexExp(self: *Tokenizer) Token {
         while (self.index < self.input.len) {
             const c = self.input[self.index];
             self.index += 1;
@@ -68,6 +99,19 @@ pub const Tokenizer = struct {
                 '$' => Token.AnchorEnd,
                 '|' => Token.Union,
                 else => Token{ .Char = c },
+            };
+        }
+        return Token.Eof;
+    }
+
+    pub fn nextBracketExp(self: *Tokenizer) Token {
+        while (self.index < self.input.len) {
+            const c = self.input[self.index];
+            self.index += 1;
+
+            return switch(c) {
+                '\\' => Token.Escape,
+                else => Token { .Char = c},
             };
         }
         return Token.Eof;

@@ -51,6 +51,6 @@ pub fn main() !void {
     }
 }
 
-test "basic regex test" {
+test "bracket tests simple 1" {
 
 }
