@@ -1,13 +1,18 @@
-const std = @import("std");
-const ParserModule = @import("Parser.zig");
-const RegexNode = ParserModule.RegexNode;
+const std              = @import("std");
+const ParserModule     = @import("Parser.zig");
+const RegexNode        = ParserModule.RegexNode;
+const INFINITY         = ParserModule.INFINITY;
+const Ascii            = @import("Ascii.zig");
 
-const Green = "\x1b[32m"; // Green for Char and CharClass
-const Yellow = "\x1b[33m"; // Yellow for Concat
-const Cyan = "\x1b[36m"; // Cyan for Star
-const Blue = "\x1b[34m"; // Blue for Alternation
-const Reset = "\x1b[0m";  // Reset color
-const INFINITY = 10_000_000;
+const Green      = "\x1b[32m"; // Green for Char and CharClass
+const BrightGreen= "\x1b[92m"; // Bright green for literal chars
+const Yellow     = "\x1b[33m"; // Yellow for Concat and TrailingContext
+const Cyan       = "\x1b[36m"; // Cyan for Repetition
+const Blue       = "\x1b[34m"; // Blue for Alternation
+const Magenta    = "\x1b[35m"; // Magenta for Groups
+const Red        = "\x1b[31m"; // Red for Anchors
+const White      = "\x1b[97m"; // White for label text
+const Reset      = "\x1b[0m";  // Reset color
 
 pub fn dump(self: *const RegexNode, indent: usize) void {
     var pad: [1024]u8 = .{0} ** 1024;
@@ -16,38 +21,33 @@ pub fn dump(self: *const RegexNode, indent: usize) void {
     }
 
     switch (self.*) {
-        .Dot => {
-            std.debug.print("{s}{s}{s}{s}\n", .{
-                pad,
-                Green,
-                @tagName(.Dot),
-                Reset
+        .Char => {
+            std.debug.print("{s}{s}{s}{s}({s}{c}{s})\n", .{
+                pad, Green, @tagName(.Char), Reset,
+                BrightGreen, self.Char, Reset,
             });
         },
-        .Char => {
-            std.debug.print("{s}{s}{s}{s}({c})\n", .{
-                pad,
-                Green,
-                @tagName(.Char),
-                Reset,
-                self.Char 
-            });
+        .Group => {
+            std.debug.print("{s}{s}{s}(\n", .{ pad, Magenta, @tagName(self.*) });
+            self.Group.dump(indent + 1);
+            std.debug.print("{s})\n", .{ pad });
         },
         .CharClass => {
             var buffer: [255]u8 = undefined;
             var len: usize = 0;
 
             for (0..255) |i| {
+                const iU8: u8 = @intCast(i);
                 if (self.CharClass.range.isSet(i)) {
-                    buffer[len] = @as(u8, @intCast(i));
+                    buffer[len] = if (Ascii.isGraph(iU8)) iU8 else '.';
                     len += 1;
                 }
             }
-            std.debug.print("{s}{s}(negate={any}, chars=\"{s}\")\n", .{
+            std.debug.print("{s}{s}(negate={any}, chars=\"{s}{s}{s}\")\n", .{
                 pad,
-                @tagName(.CharClass),
+                Green,
                 self.CharClass.negate,
-                buffer[0..len],
+                BrightGreen, buffer[0..len], Reset,
             });
         },
         .Concat => {
@@ -57,9 +57,8 @@ pub fn dump(self: *const RegexNode, indent: usize) void {
             std.debug.print("{s})\n", .{ pad });
         },
         .Repetition => {
-            std.debug.print("{s}{s}({d}, {?})(\n", .{ 
-                pad,
-                @tagName(.Repetition),
+            std.debug.print("{s}{s}{s}({d}, {?})(\n", .{ 
+                Cyan, pad, @tagName(.Repetition),
                 self.Repetition.min,
                 self.Repetition.max,
             });
@@ -67,21 +66,29 @@ pub fn dump(self: *const RegexNode, indent: usize) void {
             std.debug.print("{s})\n", .{ pad });
         },
         .Alternation => {
-            std.debug.print("{s}{s}(\n", .{ pad, @tagName(.Alternation) });
+            std.debug.print("{s}{s}{s}(\n", .{ Blue, pad, @tagName(.Alternation) });
             self.Alternation.left.dump(indent + 1);
             self.Alternation.right.dump(indent + 1);
             std.debug.print("{s})\n", .{ pad });
         },
         .AnchorStart => {
-            std.debug.print("{s}{s}(\n", .{ pad, @tagName(.AnchorStart) });
+            std.debug.print("{s}{s}{s}(\n", .{ Red, pad, @tagName(.AnchorStart) });
             self.AnchorStart.dump(indent + 1);
             std.debug.print("{s})\n", .{ pad });
         },
         .AnchorEnd => {
-            std.debug.print("{s}{s}(\n", .{ pad, @tagName(.AnchorEnd) });
+            std.debug.print("{s}{s}{s}(\n", .{ Red, pad, @tagName(.AnchorEnd) });
             self.AnchorEnd.dump(indent + 1);
             std.debug.print("{s})\n", .{ pad });
         },
-        else => @panic("Unhandled RegexNode format !"),
+        .TrailingContext => {
+            std.debug.print("{s}{s}{s}{s}(\n", .{ Yellow, pad, @tagName(self.*), Reset });
+            std.debug.print("{s}ToConsume: {s}", .{ White, Reset });
+            self.TrailingContext.left.dump(indent + 1);
+            std.debug.print("{s}Lookahead: {s}", .{ White, Reset });
+            self.TrailingContext.right.dump(indent + 1);
+            std.debug.print("{s})\n", .{ pad });
+        },
+        // else => @panic("Unhandled RegexNode format !"),
     }
 }

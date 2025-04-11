@@ -7,8 +7,11 @@ const Parser            = ParserModule.Parser;
 const TokenizerModule   = @import("Tokenizer.zig");
 const Token             = TokenizerModule.Token;
 const PosixClass        = TokenizerModule.PosixClass;
+const INFINITY          = Parser.INFINITY;
 
-pub fn makeNode(self: *Parser, node: RegexNode) ParserError!*RegexNode {
+const Ascii             = @import("Ascii.zig");
+
+pub fn makeNode(self: *Parser, node: RegexNode) !*RegexNode {
     const ret = try self.pool.create();
     ret.* = node;
     return ret;
@@ -19,10 +22,35 @@ pub fn makeChar(self: *Parser) ParserError!*RegexNode {
     return makeNode(self, .{ .Char = self.advance().Char });
 }
 
-pub fn makeDot(self: *Parser) ParserError!*RegexNode {
+pub fn makeEscape(self: *Parser) ParserError!*RegexNode {
+    std.debug.assert(self.currentEql(.Escape));
+    self.tokenizer.changeContext(.BracketExp);
     _ = self.advance();
-    return makeNode(self, .Dot);
+    if (self.currentEql(.Eof)) return error.UnexpectedEof;
+
+    const node = makeNode(self, .{ .Char = self.current.Char });
+    self.tokenizer.changeContext(.RegexExp);
+    _ = self.advance();
+
+    return node;
 }
+
+pub fn makeGroup(self: *Parser) ParserError!*RegexNode {
+    std.debug.assert(self.currentEql(.LParen));
+    _ = self.advance();
+    self.depth += 1;
+    const groupBody = try self.parseExpr(.None);
+    const node =  makeNode(self, .{
+        .Group = groupBody,
+    });
+    if (!self.currentEql(.RParen)) {
+        return error.UnbalancedParenthesis;
+    }
+    _ = self.advance();
+    self.depth -= 1;
+    return node;
+}
+
 
 pub fn makeAnchorStart(self: *Parser) ParserError!*RegexNode {
     _ = self.advance();
@@ -46,10 +74,18 @@ fn makeBitSet(comptime predicate: fn (u8) bool) std.StaticBitSet(256) {
 
 fn fillRange(range: *std.StaticBitSet(256), class: PosixClass) void {
     range.* = blk: switch (class) {
+        .upper => break: blk range.unionWith(makeBitSet(std.ascii.isUpper)),
+        .lower => break: blk range.unionWith(makeBitSet(std.ascii.isLower)),
         .alpha => break :blk range.unionWith(makeBitSet(std.ascii.isAlphabetic)),
+        .digit => break :blk range.unionWith(makeBitSet(std.ascii.isDigit)),
+        .xdigit => break :blk range.unionWith(makeBitSet(std.ascii.isHex)),
         .alnum => break :blk range.unionWith(makeBitSet(std.ascii.isAlphanumeric)),
+        .punct => break :blk range.unionWith(makeBitSet(Ascii.isPunct)),
+        .blank => break :blk range.unionWith(makeBitSet(Ascii.isBlank)),
+        .space => break :blk range.unionWith(makeBitSet(std.ascii.isWhitespace)),
         .cntrl => break :blk range.unionWith(makeBitSet(std.ascii.isControl)),
-        else => std.debug.panic("Unhandled POSIX class: {}", .{class}),
+        .graph => break :blk range.unionWith(makeBitSet(Ascii.isGraph)),
+        .print => break :blk range.unionWith(makeBitSet(std.ascii.isPrint)),
     };
 }
 
@@ -57,8 +93,7 @@ fn fillRange(range: *std.StaticBitSet(256), class: PosixClass) void {
 fn getPosixClass(self: *Parser) ParserError!PosixClass {
     std.debug.assert(self.currentEql(.{ .Char = '[' }));
     std.debug.assert(self.peakEql(.{ .Char = ':' }));
-    _ = self.advance();
-    _ = self.advance();
+    _ = self.advanceN(2);
     std.log.debug("[POSIX]: {}", .{self.current});
 
     var buffer: [256]u8 = .{0} ** 256;
@@ -66,7 +101,7 @@ fn getPosixClass(self: *Parser) ParserError!PosixClass {
 
     while (true) {
         if (self.currentEql(.{ .Char = ':' }) and self.peakEql(.{ .Char = ']' })) {
-            _ = self.advance(); _ = self.advance();
+            _ = self.advanceN(2);
             break;
         }
         buffer[it] = self.current.Char;
@@ -81,6 +116,13 @@ fn getPosixClass(self: *Parser) ParserError!PosixClass {
 pub fn makeBracketExpr(self: *Parser) ParserError!*RegexNode {
     var range = std.StaticBitSet(256).initEmpty();
     var negate = false;
+
+    if (self.currentEql(.Dot)) {
+        _ = self.advance();
+        return makeNode(self, .{
+            .CharClass = .{ .negate = false, .range = makeBitSet(Ascii.notZero) }
+        });
+    }
 
     //INFO: Change tokenizer context to produce BrackExp tokens
     self.tokenizer.changeContext(.BracketExp);
@@ -113,8 +155,7 @@ pub fn makeBracketExpr(self: *Parser) ParserError!*RegexNode {
         
         if (self.peakEql(.{ .Char = '-' })) {
             const rangeStart = self.current.Char;
-            _ = self.advance();
-            _ = self.advance();
+            _ = self.advanceN(2);
             if (self.currentEql(.{ .Char = ']' })) {
                 range.set(rangeStart);
                 range.set('-');
@@ -135,10 +176,10 @@ pub fn makeBracketExpr(self: *Parser) ParserError!*RegexNode {
         _ = self.advance();
     }
     std.debug.assert(self.currentEql(.{ .Char = ']' }));
-    _ = self.advance();
 
     //INFO: Restore Regexp Toknizer state
     self.tokenizer.changeContext(.RegexExp);
+    _ = self.advance();
 
     return makeNode(self, .{
         .CharClass = .{ .negate = negate, .range = range } },
@@ -170,11 +211,25 @@ pub fn makeAlternation(self: *Parser, left: *RegexNode) ParserError!*RegexNode {
     });
 }
 
-
 pub fn makeAnchorEnd(self: *Parser, left: *RegexNode) ParserError!*RegexNode {
     _ = self.advance();
     return makeNode(self, .{
         .AnchorEnd = left 
+    });
+}
+
+pub fn makeTrailingContext(self: *Parser, left: *RegexNode) ParserError!*RegexNode {
+    if (self.hasSeenTrailingContext)
+        return error.TooManyTrailingContexts;
+
+    self.hasSeenTrailingContext = true;
+    _ = self.advance();
+
+    return makeNode(self, .{ 
+        .TrailingContext = .{
+            .left = left,
+            .right = try self.parseExpr(.None) 
+        }
     });
 }
 
@@ -239,7 +294,6 @@ pub fn makeBracesExpr(self: *Parser, left: *RegexNode) ParserError!*RegexNode {
 
 
 
-const INFINITY = 10_000_000;
 
 pub fn makeRepetition(self: *Parser, left: *RegexNode) ParserError!*RegexNode {
     const token = self.advance();

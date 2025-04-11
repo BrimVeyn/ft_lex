@@ -2,16 +2,17 @@ const std = @import("std");
 
 pub const Token = union(enum) {
     Char: u8,
+    Escape,
+    TrailingContext,
+    AnchorStart,
+    AnchorEnd,
     Star,
     Plus,
     Question,
     LParen,
     RParen,
     Union,
-    AnchorStart,
-    AnchorEnd,
     Dot,
-    Escape,
     LBracket,
     RBracket,
     LBrace,
@@ -98,6 +99,7 @@ pub const Tokenizer = struct {
                 '^' => Token.AnchorStart,
                 '$' => Token.AnchorEnd,
                 '|' => Token.Union,
+                '/' => Token.TrailingContext,
                 else => Token{ .Char = c },
             };
         }
@@ -110,7 +112,6 @@ pub const Tokenizer = struct {
             self.index += 1;
 
             return switch(c) {
-                '\\' => Token.Escape,
                 else => Token { .Char = c},
             };
         }

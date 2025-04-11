@@ -1,12 +1,14 @@
 const std               = @import("std");
-const TokenizerModule   = @import("Tokenizer.zig");
+const log               = std.log;
 
+const Lookup            = @import("Lookup.zig");
+const fillLookupTables = Lookup.fillLookupTables;
+const Makers            = @import("ParserMakers.zig");
+pub const makeNode = Makers.makeNode;
+const RegexNodeDump     = @import("RegexNodeDump.zig");
+const TokenizerModule   = @import("Tokenizer.zig");
 const Tokenizer         = TokenizerModule.Tokenizer;
 const Token             = TokenizerModule.Token;
-const RegexNodeDump     = @import("RegexNodeDump.zig");
-const log               = std.log;
-const Lookup            = @import("Lookup.zig");
-const Makers            = @import("ParserMakers.zig");
 
 pub const Parser = @This();
 
@@ -18,7 +20,15 @@ const ParserErrorSet = error {
     BracketExpUnexpectedChar,
     BracketExpInvalidPosixClass,
     MalformedBracketExp,
+    TooManyTrailingContexts,
+    UnbalancedParenthesis,
+    UnexpectedRightBrace,
+    UnexpectedRightBracket,
+    UnexpectedPostfixOperator,
+    UnexpectedEof,
 };
+
+pub const INFINITY: usize = 1_000_000;
 
 pub const BindingPower = enum(u8) {
     None = 0,
@@ -36,12 +46,15 @@ pub const RegexNode = union(enum) {
     Group: *RegexNode,
     AnchorStart: *RegexNode,
     AnchorEnd: *RegexNode,
-    Dot,
     CharClass: struct {
         negate: bool,
         range: std.StaticBitSet(256),
     },
     Concat: struct {
+        left: *RegexNode,
+        right: *RegexNode,
+    },
+    TrailingContext: struct {
         left: *RegexNode,
         right: *RegexNode,
     },
@@ -61,14 +74,15 @@ pub const RegexNode = union(enum) {
 const nud_handler_fn = *const fn (self: *Parser) ParserError!*RegexNode;
 const led_handler_fn = *const fn (self: *Parser, left: *RegexNode) ParserError!*RegexNode;
 
-const fillLookupTables = Lookup.fillLookupTables;
-
 tokenizer: Tokenizer,
 current: Token,
 pool: std.heap.MemoryPool(RegexNode),
 nud_lookup: ?[Tokenizer.TokenCount]?nud_handler_fn = null,
 led_lookup: ?[Tokenizer.TokenCount]?led_handler_fn = null,
 bp_lookup: ?[Tokenizer.TokenCount]?BindingPower = null,
+//Used to handle nested grouping
+depth: usize = 0,
+hasSeenTrailingContext: bool = false,
 
 pub fn init(alloc: std.mem.Allocator, input: []const u8) !Parser {
     var tokenizer = Tokenizer.init(input);
@@ -91,6 +105,13 @@ pub fn advance(self: *Parser) Token {
     const token = self.current;
     self.current = self.tokenizer.next();
     std.log.info("Token: {}", .{self.current});
+    return token;
+}
+
+pub fn advanceN(self: *Parser, n: usize) Token {
+    std.debug.assert(n != 0);
+    var token: Token = undefined;
+    for (0..n) |_| token = self.advance();
     return token;
 }
 
@@ -142,6 +163,10 @@ pub fn parseExpr(self: *Parser, min_bp: BindingPower) ParserError!*RegexNode {
     while (self.current != .Eof) {
         const cur_bp = self.getBp();
 
+        if (self.depth > 0 and self.currentEql(.RParen))
+            break;
+
+        std.log.debug("[PREC]: {}:{} <-> {}", .{self.current, cur_bp, min_bp});
         if (@intFromEnum(cur_bp) < @intFromEnum(min_bp))
             break;
 

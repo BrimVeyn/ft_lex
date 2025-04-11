@@ -2,14 +2,13 @@ digraph test123 {
     rankdir=LR;
     node [shape=circle];
 
-    start [shape=plaintext,label=""];
+	edge [fontname="monospace"];
+	node [fontname="monospace", shape=circle];
+	start [shape=point, width=0.2];
+	edge [style=solid];
     start -> 0;
 
-0 -> 1 [label="a"]
-1 -> 2 [label="ε"]
-2 -> 4 [label="ε"]
-2 -> 3 [label="ε"]
-4 -> 5 [label="b"]
-5 -> 4 [label="ε"]
-5 -> 3 [label="ε"]
+0 -> 2 [label="\\"]
+2 -> 3 [label="\\"]
+3 [shape="doublecircle"]
 }
