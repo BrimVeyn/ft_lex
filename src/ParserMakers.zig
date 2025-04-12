@@ -323,4 +323,3 @@ pub fn makeRepetition(self: *Parser, left: *RegexNode) ParserError!*RegexNode {
         else => std.debug.panic("Unsupported repetition token: {s}", .{@tagName(self.current)}),
     };
 }
-

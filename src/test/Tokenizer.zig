@@ -1,5 +1,5 @@
 const std = @import("std");
-const TokenizerModule = @import("Tokenizer.zig");
+const TokenizerModule = @import("../Tokenizer.zig");
 const Tokenizer = TokenizerModule.Tokenizer;
 const Token = TokenizerModule.Token;
 
@@ -17,28 +17,19 @@ fn tokenizeAll(alloc: std.mem.Allocator, input: []const u8) ![]Token {
     return token_list.toOwnedSlice();
 } 
 
-fn assertTokensEql(tokens: []Token, expected: []Token) !void {
-    for (tokens, 0..) |token, i| {
-        std.testing.expect(i < expected.len and token.eql(expected[i])) catch {
-            std.debug.print("Got: {} <> Expected: {}", .{expected[i], token});
-            return error.TestFailed;
-        };
-    }
-    return ;
-}
-
 fn tokenizerTestTemplate(alloc: std.mem.Allocator, input: []const u8, expected: []Token) !void {
     const tokens = tokenizeAll(alloc, input) catch {
         @panic("Memory error");
     };
     defer alloc.free(tokens);
-    try assertTokensEql(tokens, expected[0..]);
+    try std.testing.expectEqualSlices(Token, tokens, expected);
 }
 
 test "Simple character tokenization" {
     const alloc = std.testing.allocator;
     var expected = [_]Token{
         .{ .Char = 'a' },
+        .{ .Char = 'b' },
         .AnchorEnd,
     };
     try tokenizerTestTemplate(alloc, "ab$", expected[0..]);
