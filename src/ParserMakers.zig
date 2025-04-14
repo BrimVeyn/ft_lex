@@ -22,15 +22,124 @@ pub fn makeChar(self: *Parser) ParserError!*RegexNode {
     return makeNode(self, .{ .Char = self.advance().Char });
 }
 
-pub fn makeEscape(self: *Parser) ParserError!*RegexNode {
-    std.debug.assert(self.currentEql(.Escape));
+pub fn makeQuoted(self: *Parser) ParserModule!*RegexNode {
+    _ = self.advance();
+    // const inner = self.parseExpr
+}
+
+pub fn makeStartCondition(self: *Parser) ParserError!*RegexNode {
+    std.debug.assert(self.currentEql(.StartConditionOpen));
     self.tokenizer.changeContext(.BracketExp);
     _ = self.advance();
-    if (self.currentEql(.Eof)) return error.UnexpectedEof;
-
-    const node = makeNode(self, .{ .Char = self.current.Char });
-    self.tokenizer.changeContext(.RegexExp);
+    var buffer: [64:0]u8 = .{0} ** 64;
+    var i: usize = 0;
+    while (true) {
+        if (self.currentEql(.Eof))
+            return error.UnexpectedEof;
+        if (self.currentEql(.{ .Char = '>' })) {
+            break;
+        }
+        buffer[i] = self.current.Char;
+        i += 1;
+        _ = self.advance();
+    }
+    self.tokenizer.changeContext(.RegexExpCommon);
+    if (i == 0 or !self.currentEql(.{ .Char = '>' })) {
+        return error.BadStartConditionList;
+    }
     _ = self.advance();
+
+    return makeNode(self, .{
+        .StartCondition = .{
+            .name = buffer,
+            .left = try self.parseExpr(.None) 
+        } 
+    });
+}
+
+pub fn getEscaped(self: *Parser) !Token {
+    var is_hexa = false;
+    var is_octal = false;
+    var eaten: usize  = 0;
+    var buffer: [5]u8 = .{0} ** 5;
+    var go_back = false;
+    var i: usize = 0;
+
+    while (true) {
+        _ = self.advance();
+        if (self.currentEql(.Eof))
+            break;
+
+        std.log.info("buf: {s}, i: {d}", .{buffer, i});
+        if (self.currentEql(.{ .Char = '\x00' }) or eaten == 3) {
+            go_back = true;
+            break;
+        }
+
+
+        if (eaten == 0 and self.currentEql(.{ .Char = 'x' })) {
+            is_hexa = true; eaten += 1;
+            continue;
+        } else if (eaten == 0 and Ascii.isOctal(self.current.Char)) {
+            buffer[i] = self.current.Char;
+            i += 1; is_octal = true; eaten += 1;
+            continue;
+        }
+
+        std.log.info("hex | octal: {}|{}, i: {d}", .{is_hexa, is_octal, i});
+        if ((is_hexa and !std.ascii.isHex(self.current.Char))
+            or (is_octal and !Ascii.isOctal(self.current.Char))) {
+            go_back = true;
+            break;
+        }
+
+        if (is_hexa and std.ascii.isHex(self.current.Char)) {
+            buffer[i] = self.current.Char;
+            i += 1; eaten += 1;
+            continue;
+        }
+
+        if (is_octal and Ascii.isOctal(self.current.Char)) {
+            buffer[i] = self.current.Char;
+            i += 1; eaten += 1;
+            continue;
+        }
+
+        return switch (self.current.Char) {
+            'a' => Token{.Char = 0x07 },
+            'b' => Token{.Char = 0x08 },
+            'f' => Token{.Char = 0x0C },
+            'n' => Token{.Char = 0x0A },
+            'r' => Token{.Char = 0x0D },
+            't' => Token{.Char = 0x09 },
+            'v' => Token{.Char = 0x0B },
+            else => self.current,
+        };
+    }
+    //Go back one character so the tokenizer can reinterpret it 
+    //as part of the regex and not the escape sequence
+    std.log.warn("GO BACK", .{});
+    if (go_back) self.tokenizer.index -= 1;
+    return if (is_hexa) Token{ .Char = try std.fmt.parseInt(u8, buffer[0..i], 16) }
+        else Token{ .Char = try std.fmt.parseInt(u8, buffer[0..i], 8) };
+}
+
+pub fn makeEscape(self: *Parser) ParserError!*RegexNode {
+    std.debug.assert(self.currentEql(.Escape));
+
+    self.tokenizer.changeContext(.BracketExp);
+    const char = getEscaped(self) catch {
+        return error.UnexpectedEof;
+    };
+
+    if (Token.eql(char, .Eof)) {
+        return error.OutOfMemory;
+    }
+
+    self.tokenizer.changeContext(.RegexExpCommon);
+    _ = self.advance();
+
+    const node = makeNode(self, .{ .Char = char.Char });
 
     return node;
 }
@@ -53,6 +162,7 @@ pub fn makeGroup(self: *Parser) ParserError!*RegexNode {
 
 
 pub fn makeAnchorStart(self: *Parser) ParserError!*RegexNode {
+    std.debug.assert(self.currentEql(.AnchorStart));
     _ = self.advance();
     return makeNode(self, .{ 
         .AnchorStart = try self.parseExpr(.Anchoring),
@@ -152,6 +262,13 @@ pub fn makeBracketExpr(self: *Parser) ParserError!*RegexNode {
             fillRange(&range, class);
             continue;
         }
+
+        if (self.currentEql(.{.Char = '\\'})) {
+            const char = getEscaped(self) 
+                catch return error.MalformedBracketExp;
+            range.set(char.Char);
+            continue;
+        }
         
         if (self.peakEql(.{ .Char = '-' })) {
             const rangeStart = self.current.Char;
@@ -178,7 +295,7 @@ pub fn makeBracketExpr(self: *Parser) ParserError!*RegexNode {
     std.debug.assert(self.currentEql(.{ .Char = ']' }));
 
     //INFO: Restore Regexp Toknizer state
-    self.tokenizer.changeContext(.RegexExp);
+    self.tokenizer.changeContext(.RegexExpCommon);
     _ = self.advance();
 
     return makeNode(self, .{
@@ -212,6 +329,8 @@ pub fn makeAlternation(self: *Parser, left: *RegexNode) ParserError!*RegexNode {
 }
 
 pub fn makeAnchorEnd(self: *Parser, left: *RegexNode) ParserError!*RegexNode {
+    if (!self.peakEql(.Eof))
+        return ParserError.AnchorMisuse;
     _ = self.advance();
     return makeNode(self, .{
         .AnchorEnd = left 

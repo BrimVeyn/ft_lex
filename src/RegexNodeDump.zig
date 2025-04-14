@@ -22,9 +22,9 @@ pub fn dump(self: *const RegexNode, indent: usize) void {
 
     switch (self.*) {
         .Char => {
-            std.debug.print("{s}{s}{s}{s}({s}{c}{s})\n", .{
-                pad, Green, @tagName(.Char), Reset,
-                BrightGreen, self.Char, Reset,
+            std.debug.print("{s}{s}{s}{s}({s}{c}|{d}{s})\n", .{
+                pad, Green, @tagName(self.*), Reset,
+                BrightGreen, if (std.ascii.isPrint(self.Char)) self.Char else '.', self.Char, Reset,
             });
         },
         .Group => {
@@ -89,6 +89,11 @@ pub fn dump(self: *const RegexNode, indent: usize) void {
             self.TrailingContext.right.dump(indent + 1);
             std.debug.print("{s})\n", .{ pad });
         },
+        .StartCondition => {
+            std.debug.print("{s}{s}{s}({s}\n", .{ Red, pad, @tagName(self.*), self.StartCondition.name });
+            self.StartCondition.left.dump(indent + 1);
+            std.debug.print("{s})\n", .{ pad });
+        }
         // else => @panic("Unhandled RegexNode format !"),
     }
 }

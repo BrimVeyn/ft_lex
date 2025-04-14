@@ -17,6 +17,8 @@ pub const Token = union(enum) {
     RBracket,
     LBrace,
     RBrace,
+    StartConditionOpen,
+    Quote,
     Eof,
 
     pub fn eql(lhs: Token, rhs: Token) bool {
@@ -55,23 +57,29 @@ pub const Tokenizer = struct {
 
     pub const TokenizerCtx = enum {
         BracketExp,
-        RegexExp,
+        RegexExpStart,
+        RegexExpCommon,
     };
 
     pub const TokenCount = @typeInfo(Token).@"union".fields.len;
 
-    pub fn init(input: []const u8) Tokenizer {
+    pub fn init(input: []const u8, ctx: TokenizerCtx) Tokenizer {
         return .{ 
             .input = input,
             .index = 0,
-            .nextFn = &nextRegexExp,
+            .nextFn = switch (ctx) {
+                .BracketExp => &nextBracketExp,
+                .RegexExpCommon => &nextRegexExp,
+                .RegexExpStart => &nextRegexExpStart,
+            },
         };
     }
 
     pub fn changeContext(self: *Tokenizer, ctx: TokenizerCtx) void {
         switch (ctx) {
             .BracketExp => self.nextFn = &nextBracketExp,
-            .RegexExp => self.nextFn = &nextRegexExp,
+            .RegexExpCommon => self.nextFn = &nextRegexExp,
+            .RegexExpStart => self.nextFn = &nextRegexExpStart,
         }
     }
 
@@ -86,6 +94,7 @@ pub const Tokenizer = struct {
 
             return switch (c) {
                 '\\' => Token.Escape,
+                '"' => Token.Quote,
                 '.' => Token.Dot,
                 '*' => Token.Star,
                 '+' => Token.Plus,
@@ -106,14 +115,32 @@ pub const Tokenizer = struct {
         return Token.Eof;
     }
 
-    pub fn nextBracketExp(self: *Tokenizer) Token {
+    //Angle bracket is considered literal except if it's the first character of the line
+    pub fn nextRegexExpStart(self: *Tokenizer) Token {
         while (self.index < self.input.len) {
             const c = self.input[self.index];
             self.index += 1;
 
-            return switch(c) {
-                else => Token { .Char = c},
+            return switch (c) {
+                '<' => Token.StartConditionOpen,
+                else => {
+                    //Switch context back to regular Regex and return generated token, 
+                    //go back one character that'll be eaten by the other next fn
+                    self.index -= 1;
+                    self.changeContext(.RegexExpCommon);
+                    return self.next();
+                },
             };
+        }
+        return Token.Eof;
+    }
+
+    //Remove special meaning of all meta chars
+    pub fn nextBracketExp(self: *Tokenizer) Token {
+        while (self.index < self.input.len) {
+            const c = self.input[self.index];
+            self.index += 1;
+            return Token { .Char = c};
         }
         return Token.Eof;
     }

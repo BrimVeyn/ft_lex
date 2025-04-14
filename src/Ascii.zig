@@ -15,3 +15,7 @@ pub fn isGraph(c: u8) bool {
 pub fn notZero(c: u8) bool {
     return c != 0x00;
 }
+
+pub fn isOctal(c: u8) bool {
+    return c >= '0' and c <= '7';
+}

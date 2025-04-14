@@ -4,13 +4,14 @@ const Tokenizer = TokenizerModule.Tokenizer;
 const Token = TokenizerModule.Token;
 
 fn tokenizeAll(alloc: std.mem.Allocator, input: []const u8) ![]Token {
-    var tokenizer = Tokenizer.init(input);
+    var tokenizer = Tokenizer.init(input, .RegexExpCommon);
     var token_list = std.ArrayList(Token).init(alloc);
     defer token_list.deinit();
 
     while (true) {
         const token = tokenizer.next();
-        if (token == .Eof) break;
+        if (token == .Eof) 
+            break;
         try token_list.append(token);
     }
 

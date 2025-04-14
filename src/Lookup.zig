@@ -39,8 +39,11 @@ pub fn fillLookupTables(self: *Parser) void {
         nuds[@intFromEnum(Token.AnchorStart)] = &Makers.makeAnchorStart;
         nuds[@intFromEnum(Token.LParen)] = &Makers.makeGroup;
         nuds[@intFromEnum(Token.Escape)] = &Makers.makeEscape;
+        nuds[@intFromEnum(Token.StartConditionOpen)] = &Makers.makeStartCondition;
+
         //Error generating tokens
         nuds[@intFromEnum(Token.RParen)] = &makeNudError(ParserError.UnbalancedParenthesis);
+        nuds[@intFromEnum(Token.Union)] = &makeNudError(ParserError.PrefixUnexpected);
         nuds[@intFromEnum(Token.AnchorEnd)] = &makeNudError(ParserError.PrefixUnexpected);
         nuds[@intFromEnum(Token.RBrace)] = &makeNudError(ParserError.UnexpectedRightBrace);
         nuds[@intFromEnum(Token.RBracket)] = &makeNudError(ParserError.UnexpectedRightBracket);
@@ -70,12 +73,17 @@ pub fn fillLookupTables(self: *Parser) void {
         leds[@intFromEnum(Token.Union)] = &Makers.makeAlternation;
         leds[@intFromEnum(Token.TrailingContext)] = &Makers.makeTrailingContext;
 
+        //Error generating tokens
         leds[@intFromEnum(Token.AnchorStart)] = &makeLedError(ParserError.PrefixUnexpected);
         leds[@intFromEnum(Token.RParen)] = &makeLedError(ParserError.UnbalancedParenthesis);
         leds[@intFromEnum(Token.RBrace)] = &makeLedError(ParserError.UnexpectedRightBrace);
         leds[@intFromEnum(Token.RBracket)] = &makeLedError(ParserError.UnexpectedRightBracket);
         leds[@intFromEnum(Token.Eof)] = &makeLedError(ParserError.UnexpectedEof);
     }
+
+    // for (self.led_lookup.?, 0..) |nud, i| {
+    //     std.debug.print("Nuds: {d}: {any}\n", .{i, nud});
+    // }
 
     if (self.bp_lookup) |*bps| {
         bps[@intFromEnum(Token.LBracket)] = .Bracket;
@@ -91,15 +99,17 @@ pub fn fillLookupTables(self: *Parser) void {
         bps[@intFromEnum(Token.AnchorEnd)] = .Anchoring;
         bps[@intFromEnum(Token.Union)] = .Alternation;
         bps[@intFromEnum(Token.Escape)] = .Escaped;
+        bps[@intFromEnum(Token.Quote)] = .Quoting;
 
         //Error generating tokens
         bps[@intFromEnum(Token.RBrace)] = .None;
         bps[@intFromEnum(Token.RParen)] = .None;
         bps[@intFromEnum(Token.RBracket)] = .None;
         bps[@intFromEnum(Token.Eof)] = .None;
+        bps[@intFromEnum(Token.StartConditionOpen)] = .None;
     }
 
-    for (self.bp_lookup.?) |bp| {
-        std.log.debug("bp: {any}", .{bp});
-    }
+    // for (self.bp_lookup.?) |bp| {
+    //     std.log.debug("bp: {any}", .{bp});
+    // }
 }

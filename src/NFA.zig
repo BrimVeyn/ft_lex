@@ -4,7 +4,8 @@ const ParserMakers   = @import("ParserMakers.zig");
 
 pub const StatedId = usize;
 
-pub const NFA_LIMIT = 32000;
+pub const NFA_LIMIT = 32_000;
+pub const RECURSION_LIMIT = 10_000;
 
 pub const Transition = struct {
     symbol: ?u8,
@@ -28,6 +29,9 @@ pub const NFA = struct {
     start: *State,
     accept: *State,
     lookAhead: ?*NFA = null,
+    matchStart: bool = false,
+    matchEnd: bool = false,
+    start_condition: ?[64:0]u8 = null,
 
     const GraphFormat = enum {
         Human,
@@ -129,14 +133,57 @@ pub const NFABuilder = struct {
     }
 
     pub fn astToNfa(self: *NFABuilder, node: *ParserModule.RegexNode) NFAError!NFA {
+        self.depth += 1;
         //NOTE: Avoid infinite recursion
-        if (self.next_id > NFA_LIMIT) {
+        if (self.next_id > NFA_LIMIT or self.depth > RECURSION_LIMIT) {
             return error.NFATooComplicated;
         }
 
         return switch (node.*) {
             .Group => {
                 return try self.astToNfa(node.Group);
+            },
+            .AnchorStart => {
+                std.debug.assert(self.depth == 1);
+                var inner: NFA = undefined;
+                //If we know that anchorEnd is also active, parse its child directly so we can trigger
+                //both matchStart and matchEnd on the root node.
+                if (std.meta.activeTag(node.AnchorStart.*) == ParserModule.RegexNode.AnchorEnd) {
+                    inner = try self.astToNfa(node.AnchorStart.AnchorEnd);
+                    inner.matchStart = true;
+                    inner.matchEnd = true;
+                } else {
+                    inner = try self.astToNfa(node.AnchorStart);
+                    inner.matchStart = true;
+                }
+
+                return inner;
+            },
+            .StartCondition => {
+                var inner: NFA = undefined;
+                //Same applies here, if we know that it child has AnchorStart, we check for its child it has AnchorEnd 
+                //and update the inner NFA accordingly
+                if (std.meta.activeTag(node.StartCondition.left.*) == ParserModule.RegexNode.AnchorStart
+                    and std.meta.activeTag(node.StartCondition.left.AnchorStart.*) == ParserModule.RegexNode.AnchorEnd) {
+                    inner = try self.astToNfa(node.StartCondition.left.AnchorStart.AnchorEnd);
+                    inner.matchStart = true;
+                    inner.matchEnd = true;
+                } else if (std.meta.activeTag(node.StartCondition.left.*) == ParserModule.RegexNode.AnchorStart) {
+                    inner = try self.astToNfa(node.StartCondition.left.AnchorStart);
+                    inner.matchStart = true;
+                } else {
+                    inner = try self.astToNfa(node.StartCondition.left);
+                }
+
+                inner.start_condition = .{0} ** 64;
+                @memcpy(inner.start_condition.?[0..], node.StartCondition.name[0..]);
+                return inner;
+            },
+            .AnchorEnd => {
+                std.debug.assert(self.depth == 1);
+                var inner = try self.astToNfa(node.AnchorEnd);
+                inner.matchEnd = true;
+                return inner;
             },
             .Char => {
                 const start = try self.makeState(self.next_id);
@@ -280,10 +327,10 @@ pub const NFABuilder = struct {
 
                 }
             },
-            else => {
-                std.log.debug("Unhandled NFA transformation for regexNode of type: {s}", .{@tagName(node.*)});
-                return error.NFAUnhandled;
-            }
+            // else => {
+            //     std.log.debug("Unhandled NFA transformation for regexNode of type: {s}", .{@tagName(node.*)});
+            //     return error.NFAUnhandled;
+            // }
         };
     }
 

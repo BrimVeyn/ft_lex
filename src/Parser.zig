@@ -2,13 +2,13 @@ const std               = @import("std");
 const log               = std.log;
 
 const Lookup            = @import("Lookup.zig");
-const fillLookupTables = Lookup.fillLookupTables;
-const Makers            = @import("ParserMakers.zig");
-pub const makeNode = Makers.makeNode;
+const fillLookupTables  = Lookup.fillLookupTables;
 const RegexNodeDump     = @import("RegexNodeDump.zig");
 const TokenizerModule   = @import("Tokenizer.zig");
 const Tokenizer         = TokenizerModule.Tokenizer;
 const Token             = TokenizerModule.Token;
+const Makers            = @import("ParserMakers.zig");
+pub const makeNode      = Makers.makeNode;
 
 pub const Parser = @This();
 
@@ -25,7 +25,9 @@ const ParserErrorSet = error {
     UnexpectedRightBrace,
     UnexpectedRightBracket,
     UnexpectedPostfixOperator,
+    AnchorMisuse,
     UnexpectedEof,
+    BadStartConditionList,
 };
 
 pub const INFINITY: usize = 1_000_000;
@@ -37,6 +39,7 @@ pub const BindingPower = enum(u8) {
     Concatenation,
     Duplication,
     Grouping,
+    Quoting,
     Bracket,
     Escaped,
 };
@@ -67,6 +70,10 @@ pub const RegexNode = union(enum) {
         max: ?usize,
         left: *RegexNode,
     },
+    StartCondition: struct {
+        name: [64:0]u8,
+        left: *RegexNode,
+    },
 
     pub const dump = RegexNodeDump.dump;
 };
@@ -83,9 +90,10 @@ bp_lookup: ?[Tokenizer.TokenCount]?BindingPower = null,
 //Used to handle nested grouping
 depth: usize = 0,
 hasSeenTrailingContext: bool = false,
+inQuote: bool = false,
 
 pub fn init(alloc: std.mem.Allocator, input: []const u8) !Parser {
-    var tokenizer = Tokenizer.init(input);
+    var tokenizer = Tokenizer.init(input, .RegexExpStart);
     const first_token = tokenizer.next();
     const pool  = std.heap.MemoryPool(RegexNode).init(alloc);
 
@@ -164,6 +172,8 @@ pub fn parseExpr(self: *Parser, min_bp: BindingPower) ParserError!*RegexNode {
         const cur_bp = self.getBp();
 
         if (self.depth > 0 and self.currentEql(.RParen))
+            break;
+        if (self.inQuote and self.currentEql(.Quote))
             break;
 
         std.log.debug("[PREC]: {}:{} <-> {}", .{self.current, cur_bp, min_bp});

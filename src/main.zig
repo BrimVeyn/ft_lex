@@ -19,6 +19,7 @@ const NFA               = NFAModule.NFA;
 
 comptime {
     _ = @import("test/Tokenizer.zig");
+    _ = @import("test/Parser.zig");
 }
 
 const BUF_SIZE: usize = 4096;
