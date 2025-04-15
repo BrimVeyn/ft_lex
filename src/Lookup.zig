@@ -40,6 +40,7 @@ pub fn fillLookupTables(self: *Parser) void {
         nuds[@intFromEnum(Token.LParen)] = &Makers.makeGroup;
         nuds[@intFromEnum(Token.Escape)] = &Makers.makeEscape;
         nuds[@intFromEnum(Token.StartConditionOpen)] = &Makers.makeStartCondition;
+        nuds[@intFromEnum(Token.Quote)] = &Makers.makeQuote;
 
         //Error generating tokens
         nuds[@intFromEnum(Token.RParen)] = &makeNudError(ParserError.UnbalancedParenthesis);
@@ -72,6 +73,7 @@ pub fn fillLookupTables(self: *Parser) void {
         leds[@intFromEnum(Token.AnchorEnd)] = &Makers.makeAnchorEnd;
         leds[@intFromEnum(Token.Union)] = &Makers.makeAlternation;
         leds[@intFromEnum(Token.TrailingContext)] = &Makers.makeTrailingContext;
+        leds[@intFromEnum(Token.Quote)] = &Makers.makeConcat;
 
         //Error generating tokens
         leds[@intFromEnum(Token.AnchorStart)] = &makeLedError(ParserError.PrefixUnexpected);

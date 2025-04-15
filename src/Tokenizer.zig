@@ -57,6 +57,7 @@ pub const Tokenizer = struct {
 
     pub const TokenizerCtx = enum {
         BracketExp,
+        QuoteExp,
         RegexExpStart,
         RegexExpCommon,
     };
@@ -71,16 +72,18 @@ pub const Tokenizer = struct {
                 .BracketExp => &nextBracketExp,
                 .RegexExpCommon => &nextRegexExp,
                 .RegexExpStart => &nextRegexExpStart,
+                .QuoteExp => &nextQuoteExp,
             },
         };
     }
 
     pub fn changeContext(self: *Tokenizer, ctx: TokenizerCtx) void {
-        switch (ctx) {
-            .BracketExp => self.nextFn = &nextBracketExp,
-            .RegexExpCommon => self.nextFn = &nextRegexExp,
-            .RegexExpStart => self.nextFn = &nextRegexExpStart,
-        }
+        self.nextFn = switch (ctx) {
+            .BracketExp => &nextBracketExp,
+            .RegexExpCommon => &nextRegexExp,
+            .RegexExpStart => &nextRegexExpStart,
+            .QuoteExp => &nextQuoteExp,
+        };
     }
 
     pub fn next(self: *Tokenizer) Token {
@@ -145,7 +148,22 @@ pub const Tokenizer = struct {
         return Token.Eof;
     }
 
+    //Remove special meaning of all meta chars except for '\' and '"' (allows the parser to stop)
+    pub fn nextQuoteExp(self: *Tokenizer) Token {
+        while (self.index < self.input.len) {
+            const c = self.input[self.index];
+            self.index += 1;
+            return switch(c) {
+                '\\' => Token.Escape,
+                '"' => Token.Quote,
+                else => Token{.Char = c},
+            };
+        }
+        return Token.Eof;
+    }
+
     pub fn peak(self: *Tokenizer) Token {
+
         const savedIdx = self.index;
         const ret = self.next();
         self.index = savedIdx;

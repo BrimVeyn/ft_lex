@@ -14,14 +14,13 @@ pub const Parser = @This();
 
 const ParserErrorSet = error {
     PrefixUnexpected,
-    InfixUnexpected,
     BracesExpUnexpectedChar,
     BracketExpOutOfOrder,
-    BracketExpUnexpectedChar,
     BracketExpInvalidPosixClass,
     MalformedBracketExp,
     TooManyTrailingContexts,
     UnbalancedParenthesis,
+    UnbalancedQuotes,
     UnexpectedRightBrace,
     UnexpectedRightBracket,
     UnexpectedPostfixOperator,
@@ -90,11 +89,11 @@ bp_lookup: ?[Tokenizer.TokenCount]?BindingPower = null,
 //Used to handle nested grouping
 depth: usize = 0,
 hasSeenTrailingContext: bool = false,
-inQuote: bool = false,
 
 pub fn init(alloc: std.mem.Allocator, input: []const u8) !Parser {
     var tokenizer = Tokenizer.init(input, .RegexExpStart);
     const first_token = tokenizer.next();
+    std.log.info("Token: {}", .{first_token});
     const pool  = std.heap.MemoryPool(RegexNode).init(alloc);
 
     return .{
@@ -171,12 +170,9 @@ pub fn parseExpr(self: *Parser, min_bp: BindingPower) ParserError!*RegexNode {
     while (self.current != .Eof) {
         const cur_bp = self.getBp();
 
-        if (self.depth > 0 and self.currentEql(.RParen))
-            break;
-        if (self.inQuote and self.currentEql(.Quote))
+        if (self.depth > 0 and (self.currentEql(.RParen) or self.currentEql(.Quote)))
             break;
 
-        std.log.debug("[PREC]: {}:{} <-> {}", .{self.current, cur_bp, min_bp});
         if (@intFromEnum(cur_bp) < @intFromEnum(min_bp))
             break;
 

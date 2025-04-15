@@ -1,6 +1,7 @@
 const std = @import("std");
 const ParserModule = @import("../Parser.zig");
 const Parser = ParserModule.Parser;
+const ParserError = ParserModule.ParserError;
 const RegexNode = ParserModule.RegexNode;
 const Makers = @import("../ParserMakers.zig");
 const INFINITY = ParserModule.INFINITY;
@@ -283,8 +284,6 @@ test "Escape sequences: hex values" {
         },
     });
 
-    expected.dump(0);
-    head.dump(0);
     try std.testing.expectEqualDeep(head, expected);
 }
 
@@ -302,26 +301,116 @@ test "Escape sequences: octal values" {
     try std.testing.expectEqualDeep(head, expected);
 }
 
-// test "Escape sequences: all known" {
-//     const escapes = .{
-//         .{ "\\n", '\n' },
-//         .{ "\\r", '\r' },
-//         .{ "\\t", '\t' },
-//         .{ "\\f", '\x0C' },
-//         .{ "\\a", '\x07' },
-//         .{ "\\v", '\x0B' },
-//         .{ "\\b", '\x08' },
-//         .{ "\\\\", '\\' },
-//     };
-//
-//     for (escapes) |pair| {
-//         const str = pair[0];
-//         const expected_char = pair[1];
-//
-//         var parser, const head = try parseAll(std.testing.allocator, str);
-//         defer parser.deinit();
-//
-//         const expected = try makeChar(&parser, expected_char);
-//         try std.testing.expectEqualDeep(head, expected);
-//     }
-// }
+test "Escape sequences: all known including hex, octal, and literals" {
+    const Pair = struct {
+        []const u8,
+        u8,
+    };
+
+    const escapes = [_]Pair{
+        .{ "\\n", '\n' },
+        .{ "\\r", '\r' },
+        .{ "\\t", '\t' },
+        .{ "\\f", '\x0C' },
+        .{ "\\a", '\x07' },
+        .{ "\\v", '\x0B' },
+        .{ "\\b", '\x08' },
+        .{ "\\\\", '\\' },
+        .{ "\\4", 0x04 },
+
+        // Hexadecimal escape
+        .{ "\\x41", 'A' },
+        .{ "\\x7A", 'z' },
+
+        // Octal escape
+        .{ "\\101", 'A' },
+        .{ "\\172", 'z' },
+
+        // Literal characters escaped
+        .{ "\\[", '[' },
+        .{ "\\]", ']' },
+        .{ "\\(", '(' },
+        .{ "\\)", ')' },
+        .{ "\\*", '*' },
+        .{ "\\+", '+' },
+        .{ "\\?", '?' },
+        .{ "\\.", '.' },
+        .{ "\\|", '|' },
+        .{ "\\^", '^' },
+        .{ "\\$", '$' },
+    };
+
+    for (escapes) |pair| {
+        const str = pair[0];
+        const expected_char = pair[1];
+
+        var parser, const head = try parseAll(std.testing.allocator, str);
+        defer parser.deinit();
+
+        const expected = try makeChar(&parser, expected_char);
+        try std.testing.expectEqualDeep(head, expected);
+    }
+}
+
+test "Parser errors" {
+    const Pair = struct {
+        []const u8,
+        ParserError,
+    };
+
+    const escapes = [_]Pair{
+        .{ "a^", ParserError.PrefixUnexpected },
+        .{ "<>abc", ParserError.BadStartConditionList },
+        .{ "abc/def/efg", ParserError.TooManyTrailingContexts },
+        .{ "a}ab", ParserError.UnexpectedRightBrace },
+        .{ "a)bc", ParserError.UnbalancedParenthesis },
+        .{ "(abc", ParserError.UnbalancedParenthesis },
+        .{ "*ab", ParserError.UnexpectedPostfixOperator },
+        .{ "+ab", ParserError.UnexpectedPostfixOperator },
+        .{ "?ab", ParserError.UnexpectedPostfixOperator },
+        .{ "ab[a-z", ParserError.MalformedBracketExp },
+        .{ "[[:unknown:]]", ParserError.BracketExpInvalidPosixClass },
+        .{ "[z-a]*", ParserError.BracketExpOutOfOrder },
+        .{ "\\[abc]", ParserError.UnexpectedRightBracket },
+        .{ "|ab", ParserError.PrefixUnexpected },
+        .{ "/abc", ParserError.UnexpectedPostfixOperator },
+        .{ "", ParserError.UnexpectedEof },
+    };
+
+    for (escapes) |pair| {
+        const str = pair[0];
+        const expected_error = pair[1];
+        var parser = try Parser.init(std.testing.allocator, str);
+        defer parser.deinit();
+
+        const real_error = parser.parse();
+
+        try std.testing.expectError(expected_error, real_error);
+    }
+}
+
+test "Quoting" {
+    var parser, const head = try parseAll(std.testing.allocator, "\"abc\"*");
+    defer parser.deinit();
+
+    const expected = try Makers.makeNode(&parser, .{
+        .Repetition = .{ 
+            .min = 0, .max = INFINITY,
+            .left = try Makers.makeNode(&parser, .{
+                .Group = try Makers.makeNode(&parser, .{
+                    .Concat = .{
+                        .left = try makeChar(&parser, 'a'),
+                        .right = try Makers.makeNode(&parser, .{
+                            .Concat = .{
+                                .left = try makeChar(&parser, 'b'),
+                                .right = try makeChar(&parser, 'c'),
+                            }
+                        })
+                    }
+                })
+            })
+        }
+    });
+
+    try std.testing.expectEqualDeep(head, expected);
+}

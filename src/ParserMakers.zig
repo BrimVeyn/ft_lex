@@ -22,9 +22,24 @@ pub fn makeChar(self: *Parser) ParserError!*RegexNode {
     return makeNode(self, .{ .Char = self.advance().Char });
 }
 
-pub fn makeQuoted(self: *Parser) ParserModule!*RegexNode {
+pub fn makeQuote(self: *Parser) ParserError!*RegexNode {
     _ = self.advance();
-    // const inner = self.parseExpr
+    self.tokenizer.changeContext(.QuoteExp);
+
+    self.depth += 1;
+    const inner = try self.parseExpr(.None);
+
+    self.tokenizer.changeContext(.RegexExpCommon);
+    if (!self.currentEql(.Quote)) {
+        return error.UnbalancedQuotes;
+    }
+    _ = self.advance();
+
+    self.depth -= 1;
+
+    return makeNode(self, .{
+        .Group = inner,
+    });
 }
 
 pub fn makeStartCondition(self: *Parser) ParserError!*RegexNode {
@@ -70,7 +85,6 @@ pub fn getEscaped(self: *Parser) !Token {
         if (self.currentEql(.Eof))
             break;
 
-        std.log.info("buf: {s}, i: {d}", .{buffer, i});
         if (self.currentEql(.{ .Char = '\x00' }) or eaten == 3) {
             go_back = true;
             break;
@@ -86,7 +100,6 @@ pub fn getEscaped(self: *Parser) !Token {
             continue;
         }
 
-        std.log.info("hex | octal: {}|{}, i: {d}", .{is_hexa, is_octal, i});
         if ((is_hexa and !std.ascii.isHex(self.current.Char))
             or (is_octal and !Ascii.isOctal(self.current.Char))) {
             go_back = true;
@@ -118,7 +131,6 @@ pub fn getEscaped(self: *Parser) !Token {
     }
     //Go back one character so the tokenizer can reinterpret it 
     //as part of the regex and not the escape sequence
-    std.log.warn("GO BACK", .{});
     if (go_back) self.tokenizer.index -= 1;
     return if (is_hexa) Token{ .Char = try std.fmt.parseInt(u8, buffer[0..i], 16) }
         else Token{ .Char = try std.fmt.parseInt(u8, buffer[0..i], 8) };
@@ -149,7 +161,7 @@ pub fn makeGroup(self: *Parser) ParserError!*RegexNode {
     _ = self.advance();
     self.depth += 1;
     const groupBody = try self.parseExpr(.None);
-    const node =  makeNode(self, .{
+    const node = makeNode(self, .{
         .Group = groupBody,
     });
     if (!self.currentEql(.RParen)) {
@@ -382,7 +394,6 @@ pub fn makeBracesExpr(self: *Parser, left: *RegexNode) ParserError!*RegexNode {
     min = try parseInt(self);
 
     var current = self.current;
-    std.log.debug("current: {}", .{current});
 
     if (current.eql(.RBrace)) {
         _ = self.advance();
@@ -390,7 +401,6 @@ pub fn makeBracesExpr(self: *Parser, left: *RegexNode) ParserError!*RegexNode {
     }
 
     if (std.meta.activeTag(current) != Token.Char or current.Char != ',') {
-        std.debug.print("You're on a good way", .{});
         return error.BracesExpUnexpectedChar;
     }
 
@@ -403,7 +413,6 @@ pub fn makeBracesExpr(self: *Parser, left: *RegexNode) ParserError!*RegexNode {
     }
 
     max = try parseInt(self);
-    std.log.debug("MAX: {?}", .{max});
     
     std.debug.assert(self.current.eql(.RBrace));
     _ = self.advance();

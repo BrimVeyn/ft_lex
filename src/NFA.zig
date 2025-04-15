@@ -1,8 +1,9 @@
 const std           = @import("std");
 const ParserModule  = @import("Parser.zig");
-const ParserMakers   = @import("ParserMakers.zig");
+const ParserMakers  = @import("ParserMakers.zig");
+const NFADump       = @import("NFADump.zig");
 
-pub const StatedId = usize;
+pub const StateId = usize;
 
 pub const NFA_LIMIT = 32_000;
 pub const RECURSION_LIMIT = 10_000;
@@ -13,17 +14,14 @@ pub const Transition = struct {
 };
 
 pub const State = struct {
-    id: StatedId,
+    id: StateId,
     transitions: std.ArrayList(Transition),
 };
 
-
-const NFAErrorSet = error {
+pub const NFAError = error {
     NFAUnhandled,
     NFATooComplicated,
-};
-
-pub const NFAError = NFAErrorSet || error { OutOfMemory };
+} || error { OutOfMemory };
 
 pub const NFA = struct {
     start: *State,
@@ -33,82 +31,25 @@ pub const NFA = struct {
     matchEnd: bool = false,
     start_condition: ?[64:0]u8 = null,
 
-    const GraphFormat = enum {
+    pub const printStates = NFADump.printStates;
+    pub const GraphFormat = enum {
         Human,
         Dot,
     };
 
-    pub fn printStates(self: NFA, alloc: std.mem.Allocator, format: GraphFormat) !void {
-        var visited = std.AutoHashMap(StatedId, bool).init(alloc);
-        var stack = std.ArrayList(*State).init(alloc);
-        defer {
-            visited.deinit();
-            stack.deinit();
-        }
-
-        var highestState: usize = 0;
-
-        try stack.append(self.start);
-        switch (format) {
-            .Human => std.debug.print("-----Transition in human readable format ------\n", .{}),
-            .Dot => std.debug.print("---------Transitions in Dot format---------------\n", .{}),
-        }
-
-        while (stack.pop()) |state| {
-            if (visited.contains(state.id)) 
-                continue;
-            try visited.put(state.id, true); 
-            switch (format) {
-                .Human => {
-                    std.debug.print("State {}:\n", .{state.id});
-
-                    if (state.transitions.items.len == 0) {
-                        std.debug.print("  Accept\n", .{});
-                    }
-
-                    for (state.transitions.items) |t| {
-                        const symbol = if (t.symbol) |s| s else '.';
-                        std.debug.print("  -[{c}]-> {}\n", .{symbol, t.to.id});
-                        try stack.append(t.to);
-                    }
-                },
-                .Dot => {
-                    for (state.transitions.items) |transition| {
-                        const epsilon = "ε";
-                        const symbol = if (transition.symbol) |s| blk: {
-                            if (s == '\\') break: blk &[2]u8 { s, s };
-                            break: blk &[1]u8 { s };
-                        } else epsilon;
-                        if (transition.symbol != null) {
-                            std.debug.print("{d} -> {d} [label=\"{s}\"]\n", .{state.id, transition.to.id, symbol});
-                        } else {
-                            std.debug.print("{d} -> {d} [label=\"{s}\" style=dashed]\n", .{state.id, transition.to.id, symbol});
-                        }
-                        try stack.append(transition.to);
-                        highestState = if (transition.to.id > highestState) transition.to.id else highestState;
-                    }
-                },
-            }
-        }
-        switch (format) {
-            .Human => {},
-            .Dot => std.debug.print("{d} [shape=\"doublecircle\"]\n", .{highestState}),
-        }
-    }
 };
 
 pub const NFABuilder = struct {
     state_list: std.ArrayListUnmanaged(*State),
     alloc: std.mem.Allocator,
-    ast_head: *ParserModule.RegexNode,
-    next_id: StatedId = 0,
-    parser: *ParserModule.Parser,
+    next_id: StateId = 1,
     depth: usize = 0,
+    //Parser is need to allocate more RegexNodes when its needed
+    parser: *ParserModule.Parser,
 
-    pub fn init(alloc: std.mem.Allocator, AST: *ParserModule.RegexNode, parser: *ParserModule.Parser) !NFABuilder {
+    pub fn init(alloc: std.mem.Allocator, parser: *ParserModule.Parser) !NFABuilder {
         return .{
             .state_list = try std.ArrayListUnmanaged(*State).initCapacity(alloc, 10),
-            .ast_head = AST,
             .alloc = alloc,
             .parser = parser,
         };
@@ -122,7 +63,7 @@ pub const NFABuilder = struct {
         self.state_list.deinit(self.alloc);
     }
 
-    pub fn makeState(self: *NFABuilder, id: StatedId) !*State {
+    pub fn makeState(self: *NFABuilder, id: StateId) !*State {
         const node = try self.alloc.create(State);
         node.* = .{
             .id = id,
@@ -334,5 +275,19 @@ pub const NFABuilder = struct {
         };
     }
 
+    pub fn merge(self: *NFABuilder, NFAs: []NFA) !NFA {
+        if (NFAs.len == 1) 
+            return NFAs[0];
 
+        const start = try self.makeState(0);
+        const accept = try self.makeState(self.next_id);
+        self.next_id += 1;
+
+        for (NFAs) |inner| {
+            try start.transitions.append(.{ .symbol = null, .to = inner.start});
+            try inner.accept.transitions.append(.{.symbol = null, .to = accept});
+        }
+
+        return NFA{.start = start, .accept = accept };
+    }
 };

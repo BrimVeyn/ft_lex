@@ -1,7 +1,4 @@
 const std               = @import("std");
-const TokenizerModule   = @import("Tokenizer.zig");
-const ParserModule      = @import("Parser.zig");
-const NFAModule         = @import("NFA.zig");
 const stdin             = std.io.getStdIn();
 const print             = std.debug.print;
 const log               = std.log;
@@ -9,17 +6,25 @@ const Allocator         = std.mem.Allocator;
 const VectU             = std.ArrayListUnmanaged;
 const Vect              = std.ArrayList;
 
+const TokenizerModule   = @import("Tokenizer.zig");
 const Tokenizer         = TokenizerModule.Tokenizer;
 const Token             = TokenizerModule.Token;
 
+const ParserModule      = @import("Parser.zig");
 const Parser            = ParserModule.Parser;
 const RegexNode         = ParserModule.RegexNode;
+
+const NFAModule         = @import("NFA.zig");
 const NFA               = NFAModule.NFA;
+
+const DFAModule         = @import("DFA.zig");
+const DFA               = DFAModule.DFA;
 
 
 comptime {
     _ = @import("test/Tokenizer.zig");
     _ = @import("test/Parser.zig");
+    _ = @import("test/NFAs.zig");
 }
 
 const BUF_SIZE: usize = 4096;
@@ -52,15 +57,19 @@ pub fn main() !void {
             continue;
         };
         head.dump(0);
-        var nfaBuilder = try NFAModule.NFABuilder.init(alloc, head, &parser);
+        var nfaBuilder = try NFAModule.NFABuilder.init(alloc, &parser);
         defer nfaBuilder.deinit();
 
-        const nfa = nfaBuilder.astToNfa(nfaBuilder.ast_head) catch |e| {
+        const nfa = nfaBuilder.astToNfa(head) catch |e| {
             std.log.err("NFA: {!}", .{e});
             continue;
         };
-        try nfa.printStates(alloc, .Human);
+        // try nfa.printStates(alloc, .Human);
         try nfa.printStates(alloc, .Dot);
+
+        var dfa = DFA.init(alloc);
+
+        _ = try dfa.subset_construction(nfa.start);
     }
 }
 
