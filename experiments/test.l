@@ -1,15 +1,27 @@
 %{
+/* Need this for the call to atof() below. */
+#include <math.h>
+/* Need this for printf(), fopen(), and stdin below. */
 #include <stdio.h>
 %}
 
-%s COMMENT
-%x BLOCK
+%%
+
+[a-z] {
+   printf("Wow: %s (%d)\n", yytext, atoi(yytext));
+}
+
+[a-z] { }
 
 %%
 
-"a"""*			{ printf("Match: %s\n", yytext); }
+int main(int argc, char *argv[])
+{
+   ++argv, --argc;  /* Skip over program name. */
+   if (argc > 0)
+	   yyin = fopen(argv[0], "r");
+   else
+	   yyin = stdin;
 
-.                { printf("OTHER: %s\n", yytext); }
-
-%%
-
+   yylex();
+}

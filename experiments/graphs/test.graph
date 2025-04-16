@@ -1,22 +1,52 @@
-digraph test123 {
+digraph Combined {
     rankdir=LR;
     node [shape=circle];
+ edge [fontname="monospace"];
+ node [fontname="monospace", shape=circle];
 
-	edge [fontname="monospace"];
-	node [fontname="monospace", shape=circle];
-	start [shape=point, width=0.2];
-	edge [style=solid];
-    start -> 0;
+ subgraph cluster_dfa {
+  label="DFA for [a-c]*"
+d0 [shape="doublecircle"]
+d0 -> d1 [label="a"]
+d0 -> d2 [label="b"]
+d0 -> d3 [label="c"]
+d1 [shape="doublecircle"]
+d1 -> d1 [label="a"]
+d1 -> d2 [label="b"]
+d1 -> d3 [label="c"]
+d2 [shape="doublecircle"]
+d2 -> d1 [label="a"]
+d2 -> d2 [label="b"]
+d2 -> d3 [label="c"]
+d3 [shape="doublecircle"]
+d3 -> d1 [label="a"]
+d3 -> d2 [label="b"]
+d3 -> d3 [label="c"]
 
-0 -> 1 [label="ε" style=dashed]
-0 -> 7 [label="ε" style=dashed]
-7 -> 9 [label="d"]
-9 -> 11 [label="e"]
-11 -> 12 [label="f"]
-12 -> 13 [label="ε" style=dashed]
-1 -> 3 [label="a"]
-3 -> 5 [label="b"]
-5 -> 6 [label="c"]
-6 -> 13 [label="ε" style=dashed]
-13 [shape="doublecircle"]
+ }
+
+ subgraph cluster_nfa {
+  label="NFA for [a-c]*"
+
+  start [shape=point, width=0.2];
+  edge [style=solid];
+  start -> n1;
+
+n1 -> n2 [label="ε" style=dashed]
+n1 -> n10 [label="ε" style=dashed]
+n2 -> n3 [label="ε" style=dashed]
+n2 -> n5 [label="ε" style=dashed]
+n2 -> n7 [label="ε" style=dashed]
+n7 -> n8 [label="c"]
+n8 -> n9 [label="ε" style=dashed]
+n9 -> n2 [label="ε" style=dashed]
+n9 -> n10 [label="ε" style=dashed]
+n5 -> n6 [label="b"]
+n6 -> n9 [label="ε" style=dashed]
+n3 -> n4 [label="a"]
+n4 -> n9 [label="ε" style=dashed]
+n10 [shape="doublecircle"]
+
+ }
 }
+

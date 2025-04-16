@@ -20,6 +20,8 @@ const NFA               = NFAModule.NFA;
 const DFAModule         = @import("DFA.zig");
 const DFA               = DFAModule.DFA;
 
+const Graph             = @import("Graph.zig");
+
 
 comptime {
     _ = @import("test/Tokenizer.zig");
@@ -30,7 +32,7 @@ comptime {
 const BUF_SIZE: usize = 4096;
 
 pub fn main() !void {
-    var gpa: std.heap.DebugAllocator(.{}) = .init;
+    var gpa: std.heap.DebugAllocator(.{.stack_trace_frames = 15}) = .init;
     defer _ = gpa.deinit();
     const alloc = gpa.allocator();
 
@@ -48,8 +50,8 @@ pub fn main() !void {
             break;
         }
 
-        const line = std.mem.trimRight(u8, buf[0..], "\n\x00");
-        var parser = try Parser.init(alloc, line);
+        const regex = std.mem.trimRight(u8, buf[0..], "\n\x00");
+        var parser = try Parser.init(alloc, regex);
         defer parser.deinit();
 
         const head = parser.parse() catch |e| {
@@ -64,12 +66,13 @@ pub fn main() !void {
             std.log.err("NFA: {!}", .{e});
             continue;
         };
-        // try nfa.printStates(alloc, .Human);
-        try nfa.printStates(alloc, .Dot);
 
-        var dfa = DFA.init(alloc);
+        var dfa = DFA.init(alloc, nfa);
+        defer dfa.deinit();
 
-        _ = try dfa.subset_construction(nfa.start);
+        try dfa.subset_construction();
+
+        Graph.dotFormat(regex, nfa, dfa);
     }
 }
 

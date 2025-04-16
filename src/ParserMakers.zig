@@ -222,6 +222,8 @@ fn getPosixClass(self: *Parser) ParserError!PosixClass {
     var it: usize = 0;
 
     while (true) {
+        if (self.currentEql(.Eof))
+            return error.UnexpectedEof;
         if (self.currentEql(.{ .Char = ':' }) and self.peakEql(.{ .Char = ']' })) {
             _ = self.advanceN(2);
             break;

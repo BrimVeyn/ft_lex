@@ -31,12 +31,7 @@ pub const NFA = struct {
     matchEnd: bool = false,
     start_condition: ?[64:0]u8 = null,
 
-    pub const printStates = NFADump.printStates;
-    pub const GraphFormat = enum {
-        Human,
-        Dot,
-    };
-
+    pub const stringify = NFADump.stringify;
 };
 
 pub const NFABuilder = struct {

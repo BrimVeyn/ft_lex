@@ -4,15 +4,15 @@ const RegexNode        = ParserModule.RegexNode;
 const INFINITY         = ParserModule.INFINITY;
 const Ascii            = @import("Ascii.zig");
 
-const Green      = "\x1b[32m"; // Green for Char and CharClass
-const BrightGreen= "\x1b[92m"; // Bright green for literal chars
-const Yellow     = "\x1b[33m"; // Yellow for Concat and TrailingContext
-const Cyan       = "\x1b[36m"; // Cyan for Repetition
-const Blue       = "\x1b[34m"; // Blue for Alternation
-const Magenta    = "\x1b[35m"; // Magenta for Groups
-const Red        = "\x1b[31m"; // Red for Anchors
-const White      = "\x1b[97m"; // White for label text
-const Reset      = "\x1b[0m";  // Reset color
+const Green         = "\x1b[32m"; // Green for Char and CharClass
+const BrightGreen   = "\x1b[92m"; // Bright green for literal chars
+const Yellow        = "\x1b[33m"; // Yellow for Concat and TrailingContext
+const Cyan          = "\x1b[36m"; // Cyan for Repetition
+const Blue          = "\x1b[34m"; // Blue for Alternation
+const Magenta       = "\x1b[35m"; // Magenta for Groups
+const Red           = "\x1b[31m"; // Red for Anchors
+const White         = "\x1b[97m"; // White for label text
+const Reset         = "\x1b[0m";  // Reset color
 
 pub fn dump(self: *const RegexNode, indent: usize) void {
     var pad: [1024]u8 = .{0} ** 1024;
