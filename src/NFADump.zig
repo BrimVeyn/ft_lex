@@ -27,14 +27,10 @@ pub fn stringify(self: NFA, alloc: std.mem.Allocator) ![]u8 {
 
         for (state.transitions.items) |transition| {
             const epsilon = "ε";
-            const symbol = if (transition.symbol) |s| blk: {
-                if (s == '\\') break: blk &[2]u8 { s, s };
-                break: blk &[1]u8 { s };
-            } else epsilon;
-            if (transition.symbol != null) {
-                try writer.print("n{d} -> n{d} [label=\"{s}\"]\n", .{state.id, transition.to.id, symbol});
-            } else {
-                try writer.print("n{d} -> n{d} [label=\"{s}\" style=dashed]\n", .{state.id, transition.to.id, symbol});
+            switch (transition.symbol) {
+                .char => |s| try writer.print("n{d} -> n{d} [label=\"{c}\"]\n", .{state.id, transition.to.id, s}),
+                .epsilon => try writer.print("n{d} -> n{d} [label=\"{s}\" style=dashed]\n", .{state.id, transition.to.id, epsilon}),
+                .ec => |ec| try writer.print("n{d} -> n{d} [label=\"EC:{d}\"]\n", .{state.id, transition.to.id, ec}),
             }
             try stack.append(transition.to);
             highestState = if (transition.to.id > highestState) transition.to.id else highestState;

@@ -7,11 +7,9 @@
 
 %%
 
-[a-z] {
+[\x00]+ {
    printf("Wow: %s (%d)\n", yytext, atoi(yytext));
 }
-
-[a-z] { }
 
 %%
 

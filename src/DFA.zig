@@ -3,11 +3,11 @@ const NFAModule     = @import("NFA.zig");
 const State         = NFAModule.State;
 const Transition    = NFAModule.Transition;
 const NFA           = NFAModule.NFA;
-
+const Symbol        = NFAModule.Symbol;
 const stderr        = std.io.getStdErr();
 
 const DFATransition = struct {
-    symbol: ?u8,
+    symbol: Symbol,
     to: StateSet,
 };
 
@@ -73,13 +73,15 @@ pub const DFA = struct {
     data: DfaTable,
     accept_id: usize,
     nfa_start: *State,
+    yy_ec_highest: u8,
 
-    pub fn init(alloc: std.mem.Allocator, nfa: NFA) DFA {
+    pub fn init(alloc: std.mem.Allocator, nfa: NFA, yy_ec_highest: u8) DFA {
         return .{
             .alloc = alloc,
             .data = DfaTable.init(alloc),
             .nfa_start = nfa.start,
             .accept_id = nfa.accept.id,
+            .yy_ec_highest = yy_ec_highest,
         };
     }
 
@@ -109,7 +111,11 @@ pub const DFA = struct {
             // try printStateSet(entry.key_ptr.*);
             for (entry.value_ptr.*.transitions.items) |t| {
                 const i_dest = self.data.getIndex(t.to);
-                try writer.print("d{?} -> d{?} [label=\"{c}\"]\n", .{i_src, i_dest, t.symbol orelse '#'});
+                switch (t.symbol) {
+                    .char => |s| try writer.print("d{?} -> d{?} [label=\"{c}\"]\n", .{i_src, i_dest, s}),
+                    .epsilon => try writer.print("d{?} -> d{?} [label=\"#\"]\n", .{i_src, i_dest}),
+                    .ec => |ec| try writer.print("d{?} -> d{?} [label=\"EC:{d}\"]\n", .{i_src, i_dest, ec}),
+                }
             }
         }
         return try buffer.toOwnedSlice();
@@ -130,7 +136,7 @@ pub const DFA = struct {
 
         while (stack.pop()) |current| {
             for (current.transitions.items) |t| {
-                if (t.symbol == null and !closure.contains(t.to)) {
+                if (std.meta.activeTag(t.symbol) == .epsilon and !closure.contains(t.to)) {
                     try closure.put(t.to, {});
                     try stack.append(t.to);
                 }
@@ -145,7 +151,20 @@ pub const DFA = struct {
 
         for (states.keys()) |s| {
             for (s.transitions.items) |t| {
-                if (t.symbol != null and t.symbol == symbol) {
+                if (std.meta.activeTag(t.symbol) == .char and symbol == t.symbol.char) {
+                    try moves.put(t.to, {});
+                }
+            }
+        }
+        return moves;
+    }
+
+    fn move_ec(self: *DFA, states: StateSet, ec: u8) !StateSet {
+        var moves = StateSet.init(self.alloc);
+
+        for (states.keys()) |s| {
+            for (s.transitions.items) |t| {
+                if (std.meta.activeTag(t.symbol) == .ec and ec == t.symbol.ec) {
                     try moves.put(t.to, {});
                 }
             }
@@ -176,15 +195,9 @@ pub const DFA = struct {
                 var gotos = try self.move(current_set, symbol);
                 defer gotos.deinit();
 
-                // const symbol_graph = if (std.ascii.isPrint(symbol)) symbol else '.';
-                // std.debug.print("symbol: {c}|{d} found: ", .{symbol_graph, symbol});
-                // try printStateSet(gotos);
-
                 if (gotos.count() == 0) 
                     continue;
-
                 var closure = try self.epsilon_closure(gotos);
-                // try printStateSet(closure);
 
                 if (!self.data.contains(closure)) {
                     try self.data.put(closure, .{
@@ -195,13 +208,43 @@ pub const DFA = struct {
 
                     const maybe_value = self.data.getPtr(current_set);
                     if (maybe_value) |value| {
-                        try value.transitions.append(.{.symbol = symbol, .to = closure });
+                        try value.transitions.append(.{ .symbol = .{ .char = symbol }, .to = closure });
                     } else unreachable;
                 } else {
                     const maybe_value = self.data.getPtr(current_set);
                     const closure_ptr = self.data.getKeyPtr(closure);
                     if (maybe_value) |value| {
-                        try value.transitions.append(.{.symbol = symbol, .to = closure_ptr.?.* });
+                        try value.transitions.append(.{ .symbol = .{ .char = symbol }, .to = closure_ptr.?.* });
+                    } else unreachable;
+                    closure.deinit();
+                }
+            }
+            //NOTE: Begin at id 1 since 0 is reserved for \x00
+            for (1..self.yy_ec_highest + 1) |class_id| {
+                const ec: u8 = @intCast(class_id);
+                var gotos = try self.move_ec(current_set, ec);
+                defer gotos.deinit();
+
+                if (gotos.count() == 0) 
+                    continue;
+                var closure = try self.epsilon_closure(gotos);
+
+                if (!self.data.contains(closure)) {
+                    try self.data.put(closure, .{
+                        .transitions = std.ArrayList(DFATransition).init(self.alloc),
+                        .accept = self.isAccept(closure),
+                    });
+                    try queue.append(closure);
+
+                    const maybe_value = self.data.getPtr(current_set);
+                    if (maybe_value) |value| {
+                        try value.transitions.append(.{.symbol = .{ .ec =  ec }, .to = closure });
+                    } else unreachable;
+                } else {
+                    const maybe_value = self.data.getPtr(current_set);
+                    const closure_ptr = self.data.getKeyPtr(closure);
+                    if (maybe_value) |value| {
+                        try value.transitions.append(.{.symbol = .{ .ec = ec }, .to = closure_ptr.?.* });
                     } else unreachable;
                     closure.deinit();
                 }

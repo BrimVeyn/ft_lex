@@ -12,8 +12,8 @@ pub fn isGraph(c: u8) bool {
     return std.ascii.isPrint(c) and c != ' ';
 }
 
-pub fn notZero(c: u8) bool {
-    return c != 0x00;
+pub fn dot(c: u8) bool {
+    return c != 0x00 and c != '\n';
 }
 
 pub fn isOctal(c: u8) bool {

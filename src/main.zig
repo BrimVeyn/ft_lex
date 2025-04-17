@@ -21,6 +21,7 @@ const DFAModule         = @import("DFA.zig");
 const DFA               = DFAModule.DFA;
 
 const Graph             = @import("Graph.zig");
+const EC                = @import("EquivalenceClasses.zig");
 
 
 comptime {
@@ -29,7 +30,8 @@ comptime {
     _ = @import("test/NFAs.zig");
 }
 
-const BUF_SIZE: usize = 4096;
+const   BUF_SIZE: usize = 4096;
+var     yy_ec: [256]u8  = .{0} ** 256;
 
 pub fn main() !void {
     var gpa: std.heap.DebugAllocator(.{.stack_trace_frames = 15}) = .init;
@@ -51,28 +53,46 @@ pub fn main() !void {
         }
 
         const regex = std.mem.trimRight(u8, buf[0..], "\n\x00");
+
+        //Init parser
         var parser = try Parser.init(alloc, regex);
         defer parser.deinit();
 
+        //Parser expr
         const head = parser.parse() catch |e| {
             std.log.err("Parser: {!}", .{e});
             continue;
         };
+
+        //Debug print
         head.dump(0);
-        var nfaBuilder = try NFAModule.NFABuilder.init(alloc, &parser);
+        for (parser.classSet.keys(), 0..) |k, i| {
+            std.debug.print("set[{d}]: {}\n", .{i, k});
+        }
+
+        const yy_ec_highest = try EC.buildEquivalenceTable(alloc, parser.classSet, &yy_ec);
+
+        //Init nfa builder
+        var nfaBuilder = try NFAModule.NFABuilder.init(alloc, &parser, &yy_ec);
         defer nfaBuilder.deinit();
 
+        //Build nfa
         const nfa = nfaBuilder.astToNfa(head) catch |e| {
             std.log.err("NFA: {!}", .{e});
             continue;
         };
+        // std.debug.print("{s}", .{try nfa.stringify(alloc)});
 
-        var dfa = DFA.init(alloc, nfa);
+        // Init dfa builder
+        var dfa = DFA.init(alloc, nfa, yy_ec_highest);
         defer dfa.deinit();
 
+        //Build dfa from nfa
         try dfa.subset_construction();
 
-        Graph.dotFormat(regex, nfa, dfa);
+        // std.debug.print("{s}", .{try dfa.stringify(alloc)});
+
+        Graph.dotFormat(regex, nfa, dfa, &yy_ec);
     }
 }
 

@@ -2,14 +2,31 @@ const std           = @import("std");
 const ParserModule  = @import("Parser.zig");
 const ParserMakers  = @import("ParserMakers.zig");
 const NFADump       = @import("NFADump.zig");
+pub const StateId   = usize;
 
-pub const StateId = usize;
 
 pub const NFA_LIMIT = 32_000;
 pub const RECURSION_LIMIT = 10_000;
 
+pub const Symbol = union(enum) {
+    char: u8,
+    ec: u8,
+    epsilon: void,
+
+    pub fn eql(self: Symbol, rhs: Symbol) bool {
+        if (std.meta.activeTag(self) != std.meta.activeTag(rhs))
+            return false;
+
+        return switch (rhs) {
+            .char => |c| c == rhs.c,
+            .epsilon => true,
+            .ec => |ec| ec == rhs.ec,
+        };
+    }
+};
+
 pub const Transition = struct {
-    symbol: ?u8,
+    symbol: Symbol,
     to: *State,
 };
 
@@ -41,12 +58,14 @@ pub const NFABuilder = struct {
     depth: usize = 0,
     //Parser is need to allocate more RegexNodes when its needed
     parser: *ParserModule.Parser,
+    yy_ec: *[256]u8,
 
-    pub fn init(alloc: std.mem.Allocator, parser: *ParserModule.Parser) !NFABuilder {
+    pub fn init(alloc: std.mem.Allocator, parser: *ParserModule.Parser, yy_ec: *[256]u8) !NFABuilder {
         return .{
             .state_list = try std.ArrayListUnmanaged(*State).initCapacity(alloc, 10),
             .alloc = alloc,
             .parser = parser,
+            .yy_ec = yy_ec,
         };
     }
 
@@ -127,7 +146,7 @@ pub const NFABuilder = struct {
                 const accept = try self.makeState(self.next_id);
                 self.next_id += 1;
 
-                try start.transitions.append(.{ .symbol = node.Char, .to = accept });
+                try start.transitions.append(.{ .symbol = .{ .char = node.Char }, .to = accept });
                 return NFA { .start = start, .accept = accept};
             },
             .TrailingContext => {
@@ -157,25 +176,38 @@ pub const NFABuilder = struct {
                 const accept = try self.makeState(self.next_id);
                 self.next_id += 1;
 
-                try start.transitions.append(.{.symbol = null, .to = left_nfa.start });
-                try start.transitions.append(.{.symbol = null, .to = right_nfa.start });
+                try start.transitions.append(.{.symbol = .{ .epsilon = {} }, .to = left_nfa.start });
+                try start.transitions.append(.{.symbol = .{ .epsilon = {} }, .to = right_nfa.start });
 
-                try left_nfa.accept.transitions.append(.{.symbol = null, .to = accept });
-                try right_nfa.accept.transitions.append(.{.symbol = null, .to = accept });
+                try left_nfa.accept.transitions.append(.{.symbol = .{ .epsilon = {} }, .to = accept });
+                try right_nfa.accept.transitions.append(.{.symbol = .{ .epsilon = {} }, .to = accept });
                 return NFA { .start = start, .accept = accept};
             },
-            .CharClass => {
+            .CharClass => |class| {
                 const start = try self.makeState(self.next_id);
                 self.next_id += 1;
                 var accept = try self.makeState(self.next_id);
 
+                var used_classes = std.StaticBitSet(256).initEmpty();
                 for (0..256) |i| {
                     const iU8: u8 = @intCast(i);
-                    if (node.CharClass.range.isSet(i)) {
-                        const inner = try self.astToNfa(try ParserMakers.makeNode(self.parser, .{.Char = iU8}));
-                        try start.transitions.append(.{.symbol = null, .to = inner.start });
-                        try inner.accept.transitions.append(.{ .symbol = null, .to = accept });
+                    if ((!class.negate and class.range.isSet(iU8)) or
+                        (class.negate and !class.range.isSet(iU8))
+                    ) {
+                        const ec = self.yy_ec[iU8];
+                        //NOTE: ec 0 is reserved for \x00 and canno't be matched, even with negated classes
+                        if (ec == 0) 
+                            continue;
+                        used_classes.set(ec);
                     }
+                }
+
+                var used_it = used_classes.iterator(.{});
+                // std.debug.print("classes:\n", .{});
+                while (used_it.next()) |ec_id| {
+                    const ec: u8 = @intCast(ec_id);
+                    // std.debug.print("CLASSES: {d}\n", .{ec});
+                    try start.transitions.append(.{.symbol = .{ .ec = ec }, .to = accept });
                 }
 
                 accept.id = self.next_id;
@@ -195,11 +227,11 @@ pub const NFABuilder = struct {
                     accept.id = self.next_id;
                     self.next_id += 1;
 
-                    try start.transitions.append(.{ .symbol = null, .to = inner_nfa.start});
-                    try start.transitions.append(.{ .symbol = null, .to = accept});
+                    try start.transitions.append(.{ .symbol = .{ .epsilon = {} }, .to = inner_nfa.start});
+                    try start.transitions.append(.{ .symbol = .{ .epsilon = {} }, .to = accept});
 
-                    try inner_nfa.accept.transitions.append(.{ .symbol = null, .to = inner_nfa.start });
-                    try inner_nfa.accept.transitions.append(.{ .symbol = null, .to = accept });
+                    try inner_nfa.accept.transitions.append(.{ .symbol = .{ .epsilon = {} }, .to = inner_nfa.start });
+                    try inner_nfa.accept.transitions.append(.{ .symbol = .{ .epsilon = {} }, .to = accept });
 
                     return NFA{ .start = start, .accept = accept };
                 //NOTE: A link between all nodes from i > min to the accept
@@ -214,13 +246,13 @@ pub const NFABuilder = struct {
                     for (0..node.Repetition.max.?) |i| {
                         const inner_nfa = try self.astToNfa(node.Repetition.left);
                         if (i == 0) {
-                            try start.transitions.append(.{ .symbol = null, .to = inner_nfa.start });
+                            try start.transitions.append(.{ .symbol = .{ .epsilon = {} }, .to = inner_nfa.start });
                         }
                         if (maybePrev) |prev| {
-                            try prev.accept.transitions.append(.{ .symbol = null, .to = inner_nfa.start });
+                            try prev.accept.transitions.append(.{ .symbol = .{ .epsilon = {} }, .to = inner_nfa.start });
                         }
                         if (i + 1 >= node.Repetition.min) {
-                            try inner_nfa.accept.transitions.append(.{ .symbol = null, .to = accept });
+                            try inner_nfa.accept.transitions.append(.{ .symbol = .{ .epsilon = {} }, .to = accept });
                         }
                         maybePrev = inner_nfa;
                     }
@@ -229,7 +261,7 @@ pub const NFABuilder = struct {
                     self.next_id += 1;
 
                     if (node.Repetition.min == 0) {
-                        try start.transitions.append(.{ .symbol = null, .to = accept });
+                        try start.transitions.append(.{ .symbol = .{ .epsilon = {} }, .to = accept });
                     }
 
                     return NFA { .start = start, .accept = accept };
@@ -245,10 +277,10 @@ pub const NFABuilder = struct {
                     for (0..node.Repetition.min) |i| {
                         const inner_nfa = try self.astToNfa(node.Repetition.left);
                         if (i == 0) {
-                            try start.transitions.append(.{ .symbol = null, .to = inner_nfa.start });
+                            try start.transitions.append(.{ .symbol = .{ .epsilon = {} }, .to = inner_nfa.start });
                         }
                         if (maybePrev) |prev| {
-                            try prev.accept.transitions.append(.{ .symbol = null, .to = inner_nfa.start });
+                            try prev.accept.transitions.append(.{ .symbol = .{ .epsilon = {} }, .to = inner_nfa.start });
                         }
                         maybePrev = inner_nfa;
                     }
@@ -256,8 +288,8 @@ pub const NFABuilder = struct {
                     accept.id = self.next_id;
                     self.next_id += 1;
 
-                    try maybePrev.?.accept.transitions.append(.{ .symbol = null, .to = maybePrev.?.start });
-                    try maybePrev.?.accept.transitions.append(.{ .symbol = null, .to = accept });
+                    try maybePrev.?.accept.transitions.append(.{ .symbol = .{ .epsilon = {} }, .to = maybePrev.?.start });
+                    try maybePrev.?.accept.transitions.append(.{ .symbol = .{ .epsilon = {} }, .to = accept });
 
                     return NFA { .start = start, .accept = accept };
 
@@ -279,8 +311,8 @@ pub const NFABuilder = struct {
         self.next_id += 1;
 
         for (NFAs) |inner| {
-            try start.transitions.append(.{ .symbol = null, .to = inner.start});
-            try inner.accept.transitions.append(.{.symbol = null, .to = accept});
+            try start.transitions.append(.{ .symbol = .{ .epsilon = {} }, .to = inner.start});
+            try inner.accept.transitions.append(.{.symbol = .{ .epsilon = {} }, .to = accept});
         }
 
         return NFA{.start = start, .accept = accept };

@@ -216,7 +216,7 @@ fn getPosixClass(self: *Parser) ParserError!PosixClass {
     std.debug.assert(self.currentEql(.{ .Char = '[' }));
     std.debug.assert(self.peakEql(.{ .Char = ':' }));
     _ = self.advanceN(2);
-    std.log.debug("[POSIX]: {}", .{self.current});
+    // std.log.debug("[POSIX]: {}", .{self.current});
 
     var buffer: [256]u8 = .{0} ** 256;
     var it: usize = 0;
@@ -244,7 +244,7 @@ pub fn makeBracketExpr(self: *Parser) ParserError!*RegexNode {
     if (self.currentEql(.Dot)) {
         _ = self.advance();
         return makeNode(self, .{
-            .CharClass = .{ .negate = false, .range = makeBitSet(Ascii.notZero) }
+            .CharClass = .{ .negate = false, .range = makeBitSet(Ascii.dot) }
         });
     }
 
@@ -266,7 +266,7 @@ pub fn makeBracketExpr(self: *Parser) ParserError!*RegexNode {
     }
 
     while (true) {
-        std.log.debug("BRACKET: Current: {any}", .{self.current});
+        // std.log.debug("BRACKET: Current: {any}", .{self.current});
         if (self.currentEql(.Eof)) 
             return ParserError.MalformedBracketExp; //NOTE: Shouldn't reach EOF in a bracketExp
         if (self.currentEql(.{ .Char = ']' })) 
@@ -280,6 +280,7 @@ pub fn makeBracketExpr(self: *Parser) ParserError!*RegexNode {
         if (self.currentEql(.{.Char = '\\'})) {
             const char = getEscaped(self) 
                 catch return error.MalformedBracketExp;
+            _ = self.advance();
             range.set(char.Char);
             continue;
         }
@@ -306,11 +307,14 @@ pub fn makeBracketExpr(self: *Parser) ParserError!*RegexNode {
         range.set(self.current.Char);
         _ = self.advance();
     }
-    std.debug.assert(self.currentEql(.{ .Char = ']' }));
+    if (!self.currentEql(.{ .Char = ']' }))
+        return error.MalformedBracketExp;
 
     //INFO: Restore Regexp Toknizer state
     self.tokenizer.changeContext(.RegexExpCommon);
     _ = self.advance();
+
+    try self.classSet.put(range, {});
 
     return makeNode(self, .{
         .CharClass = .{ .negate = negate, .range = range } },
