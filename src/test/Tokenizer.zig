@@ -1,7 +1,8 @@
-const std = @import("std");
-const TokenizerModule = @import("../Tokenizer.zig");
-const Tokenizer = TokenizerModule.Tokenizer;
-const Token = TokenizerModule.Token;
+const std               = @import("std");
+
+const TokenizerModule   = @import("../regex/Tokenizer.zig");
+const Tokenizer         = TokenizerModule.Tokenizer;
+const Token             = TokenizerModule.Token;
 
 fn tokenizeAll(alloc: std.mem.Allocator, input: []const u8) ![]Token {
     var tokenizer = Tokenizer.init(input, .RegexExpCommon);

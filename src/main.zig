@@ -6,22 +6,22 @@ const Allocator         = std.mem.Allocator;
 const VectU             = std.ArrayListUnmanaged;
 const Vect              = std.ArrayList;
 
-const TokenizerModule   = @import("Tokenizer.zig");
+const TokenizerModule   = @import("regex/Tokenizer.zig");
 const Tokenizer         = TokenizerModule.Tokenizer;
 const Token             = TokenizerModule.Token;
 
-const ParserModule      = @import("Parser.zig");
+const ParserModule      = @import("regex/Parser.zig");
 const Parser            = ParserModule.Parser;
 const RegexNode         = ParserModule.RegexNode;
 
-const NFAModule         = @import("NFA.zig");
+const NFAModule         = @import("regex/NFA.zig");
 const NFA               = NFAModule.NFA;
 
-const DFAModule         = @import("DFA.zig");
+const DFAModule         = @import("regex/DFA.zig");
 const DFA               = DFAModule.DFA;
 
-const Graph             = @import("Graph.zig");
-const EC                = @import("EquivalenceClasses.zig");
+const Graph             = @import("regex/Graph.zig");
+const EC                = @import("regex/EquivalenceClasses.zig");
 
 
 comptime {
@@ -30,13 +30,7 @@ comptime {
     _ = @import("test/NFAs.zig");
 }
 
-const   BUF_SIZE: usize = 4096;
-var     yy_ec: [256]u8  = .{0} ** 256;
-
-pub fn main() !void {
-    var gpa: std.heap.DebugAllocator(.{.stack_trace_frames = 15}) = .init;
-    defer _ = gpa.deinit();
-    const alloc = gpa.allocator();
+pub fn interactiveMode(alloc: std.mem.Allocator) !void {
 
     var stdinReader = stdin.reader();
     var buf: [BUF_SIZE:0]u8 = .{0} ** BUF_SIZE;
@@ -65,10 +59,10 @@ pub fn main() !void {
         };
 
         //Debug print
-        head.dump(0);
-        for (parser.classSet.keys(), 0..) |k, i| {
-            std.debug.print("set[{d}]: {}\n", .{i, k});
-        }
+        // head.dump(0);
+        // for (parser.classSet.keys(), 0..) |k, i| {
+        //     std.debug.print("set[{d}]: {}\n", .{i, k});
+        // }
 
         const yy_ec_highest = try EC.buildEquivalenceTable(alloc, parser.classSet, &yy_ec);
 
@@ -94,6 +88,58 @@ pub fn main() !void {
 
         Graph.dotFormat(regex, nfa, dfa, &yy_ec);
     }
+}
+
+
+const   BUF_SIZE: usize = 4096;
+var     yy_ec: [256]u8  = .{0} ** 256;
+
+const LexOptions = struct {
+    n: bool,
+    t: bool,
+    b: bool,
+};
+
+const FileParser = struct {
+    const FileSections = struct {
+        definitions: []u8, 
+        rules: []u8,
+        userSubroutines: []u8,
+    };
+
+    pub fn parseContent(rawContent: []u8) !FileSections {
+        _ = rawContent;
+        return error.bite;
+    }
+};
+
+fn fileMode(alloc: std.mem.Allocator, fileName: []u8) !void {
+    var file = std.fs.cwd().openFile(fileName, .{}) catch |e| {
+        return print("Failed to open: {s}, reason: {!}\n", .{fileName, e});
+    };
+    defer file.close();
+    const rawContent = file.readToEndAlloc(alloc, 1e8) catch |e| {
+        return print("Faile to read: {s}, reason: {!}\n", .{fileName, e});
+    };
+    const sections = try FileParser.parseContent(rawContent);   
+    _ = sections;
+}
+
+pub fn main() !void {
+    var gpa: std.heap.DebugAllocator(.{.stack_trace_frames = 15}) = .init;
+    defer _ = gpa.deinit();
+    const alloc = gpa.allocator();
+
+    const args = try std.process.argsAlloc(alloc);
+    defer std.process.argsFree(alloc, args);
+
+    if (args.len == 1) {
+        try interactiveMode(alloc);
+    } else {
+        // const options = parseOptions();
+        try fileMode(alloc, args[1]);
+    }
+
 }
 
 test "dummy" {

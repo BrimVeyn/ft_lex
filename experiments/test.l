@@ -5,9 +5,9 @@
 #include <stdio.h>
 %}
 
-%%
+			%%
 
-[\x00]+ {
+\%%+ {
    printf("Wow: %s (%d)\n", yytext, atoi(yytext));
 }
 

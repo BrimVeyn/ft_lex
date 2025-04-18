@@ -28,13 +28,5 @@ pub fn buildEquivalenceTable(
     }
     //NOTE: yy_ec[0] aka \x00 is reserved with class_id 0 to signal eof
     yy_ec[0x00] = 0;
-
-    var yy_ec_highest: u8 = 0;
-    var sig_it = signatures.iterator();
-    while (sig_it.next()) |entry| {
-        yy_ec_highest = if (entry.value_ptr.* > yy_ec_highest) entry.value_ptr.* else yy_ec_highest;
-        std.debug.print("sig[{d}] = {}\n", .{entry.value_ptr.*, entry.key_ptr.*});
-    }
-    std.debug.print("yy_ec: {d}\n", .{yy_ec});
-    return yy_ec_highest;
+    return next_id - 1;
 }
