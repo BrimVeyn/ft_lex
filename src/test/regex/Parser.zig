@@ -1,12 +1,12 @@
 const std               = @import("std");
 
-const ParserModule      = @import("../regex/Parser.zig");
+const ParserModule      = @import("../../regex/Parser.zig");
 const Parser            = ParserModule.Parser;
 const ParserError       = ParserModule.ParserError;
 const RegexNode         = ParserModule.RegexNode;
 const INFINITY          = ParserModule.INFINITY;
 
-const Makers            = @import("../regex/ParserMakers.zig");
+const Makers            = @import("../../regex/ParserMakers.zig");
 
 fn parseAll(alloc: std.mem.Allocator, input: []const u8) !struct {Parser, *RegexNode} {
     var parser = try Parser.init(alloc, input);

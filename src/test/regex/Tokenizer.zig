@@ -1,6 +1,6 @@
 const std               = @import("std");
 
-const TokenizerModule   = @import("../regex/Tokenizer.zig");
+const TokenizerModule   = @import("../../regex/Tokenizer.zig");
 const Tokenizer         = TokenizerModule.Tokenizer;
 const Token             = TokenizerModule.Token;
 

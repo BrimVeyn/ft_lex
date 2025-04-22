@@ -1,0 +1,6 @@
+
+
+
+
+%%
+{DIGIT}+ printf("Salut !\n");
