@@ -214,7 +214,7 @@ fn fillRange(range: *std.StaticBitSet(256), class: PosixClass) void {
 
 fn getPosixClass(self: *Parser) ParserError!PosixClass {
     std.debug.assert(self.currentEql(.{ .Char = '[' }));
-    std.debug.assert(self.peakEql(.{ .Char = ':' }));
+    std.debug.assert(self.peekEql(.{ .Char = ':' }));
     _ = self.advanceN(2);
     // std.log.debug("[POSIX]: {}", .{self.current});
 
@@ -224,7 +224,7 @@ fn getPosixClass(self: *Parser) ParserError!PosixClass {
     while (true) {
         if (self.currentEql(.Eof))
             return error.UnexpectedEof;
-        if (self.currentEql(.{ .Char = ':' }) and self.peakEql(.{ .Char = ']' })) {
+        if (self.currentEql(.{ .Char = ':' }) and self.peekEql(.{ .Char = ']' })) {
             _ = self.advanceN(2);
             break;
         }
@@ -271,7 +271,7 @@ pub fn makeBracketExpr(self: *Parser) ParserError!*RegexNode {
             return ParserError.MalformedBracketExp; //NOTE: Shouldn't reach EOF in a bracketExp
         if (self.currentEql(.{ .Char = ']' })) 
             break; //NOTE: g2g
-        if (self.currentEql(.{ .Char = '[' }) and self.peakEql(.{ .Char = ':' })) {
+        if (self.currentEql(.{ .Char = '[' }) and self.peekEql(.{ .Char = ':' })) {
             const class: PosixClass = try getPosixClass(self);
             fillRange(&range, class);
             continue;
@@ -285,7 +285,7 @@ pub fn makeBracketExpr(self: *Parser) ParserError!*RegexNode {
             continue;
         }
         
-        if (self.peakEql(.{ .Char = '-' })) {
+        if (self.peekEql(.{ .Char = '-' })) {
             const rangeStart = self.current.Char;
             _ = self.advanceN(2);
             if (self.currentEql(.{ .Char = ']' })) {
@@ -347,7 +347,7 @@ pub fn makeAlternation(self: *Parser, left: *RegexNode) ParserError!*RegexNode {
 }
 
 pub fn makeAnchorEnd(self: *Parser, left: *RegexNode) ParserError!*RegexNode {
-    if (!self.peakEql(.Eof))
+    if (!self.peekEql(.Eof))
         return ParserError.AnchorMisuse;
     _ = self.advance();
     return makeNode(self, .{

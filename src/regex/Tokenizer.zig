@@ -162,7 +162,7 @@ pub const Tokenizer = struct {
         return Token.Eof;
     }
 
-    pub fn peak(self: *Tokenizer) Token {
+    pub fn peek(self: *Tokenizer) Token {
 
         const savedIdx = self.index;
         const ret = self.next();

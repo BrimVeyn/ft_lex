@@ -126,12 +126,12 @@ pub fn advanceN(self: *Parser, n: usize) Token {
     return token;
 }
 
-pub fn peak(self: *Parser) Token {
-    return self.tokenizer.peak();
+pub fn peek(self: *Parser) Token {
+    return self.tokenizer.peek();
 }
 
 pub fn currentEql(self: *Parser, token: Token) bool { return Token.eql(self.current, token); }
-pub fn peakEql(self: *Parser, token: Token) bool { return Token.eql(self.tokenizer.peak(), token); }
+pub fn peekEql(self: *Parser, token: Token) bool { return Token.eql(self.tokenizer.peek(), token); }
 
 pub const ParserError = ParserErrorSet || error { OutOfMemory };
 

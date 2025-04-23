@@ -154,11 +154,10 @@ pub fn main() !u8 {
     if (args.len == arg_it) {
         try interactiveMode(alloc);
     } else {
-        const sections = LexParser.fileMode(alloc, args[arg_it]) catch return 1;
-        defer {
-            alloc.free(sections.raw);
-            alloc.free(sections.lines);
-        }
+        var parser = try LexParser.init(alloc, args[arg_it]);
+        defer parser.deinit();
+
+        parser.parse() catch return 1;
     }
     return 0;
 }
