@@ -1,4 +1,13 @@
+%array
 
-%p 100000
+%pointer
+
+%array
+
+
+%{ djeidjeid
+	#include "stdio.h"
+
+%} djeide
 
 %%

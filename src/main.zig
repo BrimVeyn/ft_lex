@@ -157,7 +157,10 @@ pub fn main() !u8 {
         var parser = try LexParser.init(alloc, args[arg_it]);
         defer parser.deinit();
 
-        parser.parse() catch return 1;
+        parser.parse() catch {
+            // std.log.err("{!}", .{e});
+            return 1;
+        };
     }
     return 0;
 }

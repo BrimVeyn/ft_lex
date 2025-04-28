@@ -57,6 +57,7 @@ pub const Definitions = struct {
 
     pub fn deinit(self: *Definitions, alloc: std.mem.Allocator) void {
         self.cCodeFragments.deinit(alloc);
+        for (self.definitions.items) |item| alloc.free(item.substitute);
         self.definitions.deinit(alloc);
         self.startConditions.deinit(alloc);
     }
@@ -70,6 +71,7 @@ pub const LexTokenizer = struct {
         UnrecognizedPercentDirective,
         UnexpectedEOF,
         BadCharacter,
+        BadNumber,
         IncompleteNameDefinition,
     } || error { OutOfMemory };
 
@@ -86,6 +88,7 @@ pub const LexTokenizer = struct {
         nParseTreeNodes: usize,
         nPackedCharacterClass: usize,
         nOutputArray: usize,
+        YYTextType: Definitions.YYTextType,
     }; 
 
     pub const LexToken = union(enum) {
@@ -297,6 +300,7 @@ pub const LexTokenizer = struct {
             error.BadCharacter => std.log.err("{s}:{d}: bad character: {c}", .{self.getFileName(), self.getLineNo(), self.input[self.pos.absolute]}),
             error.UnexpectedEOF => std.log.err("{s}:{d}: premature EOF", .{self.getFileName(), self.getLineNo()}),
             error.IncompleteNameDefinition => std.log.err("{s}:{d}: incomplete name definition", .{self.getFileName(), self.getLineNo()}),
+            error.BadNumber => std.log.err("{s}:{d}: bad number format", .{self.getFileName(), self.getLineNo()}),
             error.OutOfMemory => std.log.err("fatal: out of memory", .{}),
         }
         return err;
@@ -321,10 +325,17 @@ pub const LexTokenizer = struct {
         // return true;
     }
 
+    inline fn eatTillNewLine(self: *LexTokenizer) void {
+        while (self.getC()) |c| {
+            if (c == '\n') break;
+        }
+    }
+
     fn getCBlock(self: *LexTokenizer) LexTokenizerError!LexToken {
         _ = self.getN(2);
-        const sBlock: usize = self.pos.absolute;
         const sLine: usize = self.pos.line;
+        self.eatTillNewLine();
+        const sBlock: usize = self.pos.absolute;
         while (!try self.isEndOfCBlock()) {
             _ = self.getC();
         }
@@ -332,7 +343,7 @@ pub const LexTokenizer = struct {
 
         std.debug.assert(std.mem.eql(u8, self.input[self.pos.absolute..self.pos.absolute + 3], "\n%}"));
         _ = self.getN(3);
-
+        self.eatTillNewLine();
         self.eatWhitespacesAndNewline();
         return LexToken{
             .cCode = .{
@@ -364,22 +375,45 @@ pub const LexTokenizer = struct {
     }
 
     fn getNumber(self: *LexTokenizer) !usize {
-        if (self.peekC()) |c| if (c == '\n') return error.UnrecognizedPercentDirective;
+        if (self.peekC()) |c| 
+            if (c == '\n')
+                return error.BadNumber;
 
         const s = self.pos.absolute;
         while (self.peekC()) |c| {
             if (std.ascii.isWhitespace(c)) break;
             _ = self.getC();
         }
-        return std.fmt.parseInt(usize, self.input[s..self.pos.absolute], 10) catch return 0;
+        return std.fmt.parseInt(usize, self.input[s..self.pos.absolute], 10) catch return error.BadNumber;
+    }
+
+    fn matchAndEatSlice(self: *LexTokenizer, slice: []const u8) bool {
+        for (slice, 1..) |c, i| {
+            if (self.peekN(i)) |lexem| if (lexem == c) continue;
+            return false;
+        }
+        _ = self.getN(slice.len);
+        self.eatTillNewLine();
+        self.eatWhitespacesAndNewline();
+        return true;
     }
 
     fn getParam(self: *LexTokenizer) LexTokenizerError!LexToken {
         _ = self.getC();
         const id = self.getC().?;
+        switch (id) {
+            'a' => if (self.matchAndEatSlice("rray")) 
+                return LexToken{ .param = .{ .YYTextType = .Array } },
+            'p' => if (self.matchAndEatSlice("ointer")) 
+                return LexToken{ .param = .{ .YYTextType = .Pointer } },
+            else => {},
+        }
+
         self.eatWhitespaces();
         const number = try self.getNumber();
+        self.eatTillNewLine();
         self.eatWhitespacesAndNewline();
+
         return switch (id) {
             'p' => .{ .param = .{ .nPositions = number }},
             'n' => .{ .param = .{ .nStates = number }},
@@ -395,13 +429,10 @@ pub const LexTokenizer = struct {
         return if (self.peekC()) |c| switch (c) {
             ' ', 0x09 ... 0x0D => self.getCLine() catch |e| return self.logError(e),
             '%' => if (self.peekN(2)) |cPeek| switch (cPeek) {
-                    '%' => {
-                        _ = self.getC();
-                        return .EndOfSection;
-                    },
+                    '%' => { _ = self.getC(); return .EndOfSection; },
                     '{' => self.getCBlock() catch |e| return self.logError(e),
                     's', 'S', 'x', 'X', => self.getStartCondition() catch |e| return self.logError(e),
-                    'p', 'n', 'a', 'e', 'k', 'o' => self.getParam(),
+                    'p', 'n', 'a', 'e', 'k', 'o' => self.getParam() catch |e| return self.logError(e),
                     else => self.logError(error.UnrecognizedPercentDirective),
                 } else self.logError(error.UnexpectedEOF),
             else => self.getDefinition() catch |e| return self.logError(e),
