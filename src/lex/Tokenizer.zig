@@ -149,7 +149,7 @@ pub const LexTokenizer = struct {
         };
     }
 
-    fn getFileName(self: LexTokenizer) []const u8 {
+    pub fn getFileName(self: LexTokenizer) []const u8 {
         return if (self.fileName) |name| std.fs.path.basename(name) else "stdin";
     }
 
@@ -216,16 +216,36 @@ pub const LexTokenizer = struct {
         };
     }
 
+    inline fn eatComment(self: *LexTokenizer) void {
+        while (true) {
+            const currC, const nextC = .{self.peekN(1), self.peekN(2)};
+            if (currC != null and nextC != null and 
+                currC == '*' and nextC == '/') 
+            {
+                _ = self.getN(2);
+                break;
+            }
+            _ = self.getC();
+        }
+    }
+
     inline fn eatWhitespacesAndNewline(self: *LexTokenizer) void {
-        while (self.peekC()) |c| {
-            if (c == '\n') {
+        while (true) {
+            const currC, const nextC = .{ self.peekN(1), self.peekN(2) };
+            if (currC == null)
+                break;
+
+            if (currC == '/' and nextC != null and nextC == '*') {
+                self.eatComment();
+            }
+            if (currC == '\n') {
                 if (self.skipEmptyLine()) {
                     continue;
                 } else {
                     _ = self.getC(); break;
                 }
             }
-            if (!std.ascii.isWhitespace(c)) break;
+            if (!std.ascii.isWhitespace(currC.?)) break;
             _ = self.getC();
         }
     }

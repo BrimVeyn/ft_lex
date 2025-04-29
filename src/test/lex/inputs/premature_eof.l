@@ -1,39 +1,21 @@
-%s START END12
-%S END2 START2
-%x NINO NINOUCH
-
-%p 200
-
-%n 1500 202002020		saalpeo	
+/* multi line comment
 
 
-%a			100
+				yolo
+*/
 
-%e				100
+KEYWORD     if|else|while|for|return
+OP          \+|\-|\*|\/|==|!=|<=|>=|<|>|&&|\|\|
 
-%k			2190349
-
-%array djiejdei
-
-%pointer dkeod
-
-%{ djeikdjekd
-
-	#include "stdio.h"
-%} djeikdjek
-
-
-	printf("salopt !\n");
+/*Single line comment		*/
 
 
 
-DIGIT [0-9]
+STRUCTFIELD field[0-9]+
 
-NUM [0-9]*
-
-KEYWORD [a-z]*|if|then|struct|ab{NUM}*
+COMPLEX     {KEYWORD}|{ID}{SPACES}?{OP}?{NUM}?
 
 %%
 
-
+# Rules would start here
 

@@ -9,6 +9,8 @@ const LexParser = @This();
 
 const LexParserError = error {
     TooLongAName,
+    RecursiveDefinitionNotAllowed,
+    NoSuchDefinition,
 } || error { OutOfMemory };
 
 definitions: Definitions,
@@ -44,32 +46,45 @@ fn advance(self: *LexParser) !LexToken {
 
 fn logError(self: *LexParser, err: LexParserError) LexParserError {
     switch (err) {
-        error.TooLongAName => std.log.err("{s}: bad substitution: too long a name", .{self.tokenizer.input}),
+        error.TooLongAName => std.log.err("{s}: bad substitution: too long a name", .{self.tokenizer.getFileName()}),
+        error.RecursiveDefinitionNotAllowed => std.log.err("{s}: recursive definition not allowed", .{self.tokenizer.getFileName()}),
+        error.NoSuchDefinition => std.log.err("{s}: no such definition", .{self.tokenizer.getFileName()}),
         else => {},
     }
     return err;
 }
 
-fn replaceName(self: *LexParser, s: usize, e: usize, def: []u8) !struct { []u8, usize } {
+fn replaceName(self: *LexParser, idef: usize, sdef: usize, edef: usize, def: *[]u8) !struct { []u8, usize } {
     var buffer: [256]u8 = .{0} ** 256;
     var stream = std.io.fixedBufferStream(&buffer);
     var writer = stream.writer();
 
-    _ = writer.write(def[0..s]) catch return error.TooLongAName;
-    _ = writer.write("bite") catch return error.TooLongAName;
-    _ = writer.write(def[e + 1..]) catch return error.TooLongAName;
+    const substitute = blk: {
+        for (self.definitions.definitions.items, 0..) |innerDef, it| {
+            std.debug.print("Comparing: {s} w {s}\n", .{innerDef.name, def.*[sdef + 1..edef]});
+            if (std.mem.eql(u8, innerDef.name, def.*[sdef + 1..edef])) {
+                if (it == idef) return error.RecursiveDefinitionNotAllowed;
+                std.debug.print("match: {s}: {s}\n", .{def.*[sdef + 1..edef], innerDef.name});
+                break :blk innerDef.substitute;
+            }
+        }
+        return error.NoSuchDefinition;
+    };
 
-    std.debug.print("name: {s}, def: {s}\n", .{def[s..e], def});
-    std.debug.print("subs: {s}\n", .{buffer});
-    self.alloc.free(def);
-    return .{ try self.alloc.dupe(u8, buffer[0..]), e + 1 };
+    var newIt: usize = 0;
+    newIt += writer.write(def.*[0..sdef]) catch return error.TooLongAName;
+    newIt += writer.write(substitute) catch return error.TooLongAName;
+    _ = writer.write(def.*[edef + 1..]) catch return error.TooLongAName;
+
+    return .{
+        try self.alloc.dupe(u8, std.mem.trimRight(u8, buffer[0..], "\x00\n ")),
+        newIt - 1,
+    };
 }
 
 fn expandDefinitions(self: *LexParser) !void {
-
-    for (0..self.definitions.definitions.items.len) |i| {
-        var def = self.definitions.definitions.items[i];
-
+    for (0..self.definitions.definitions.items.len) |idef| {
+        var def = self.definitions.definitions.items[idef];
         var quote, var brace, var register = [_]bool{ false, false, false };
         var it: usize = 0;
         var sdef, var edef = [_]usize {0, 0};
@@ -86,14 +101,12 @@ fn expandDefinitions(self: *LexParser) !void {
                 '"' => quote = !quote,
                 '[' => brace = true,
                 ']' => brace = false,
-                '{' => if (!quote and !brace) { 
-                    register = true; 
-                    sdef = it;
-                },
-                '}' => if (!quote and !brace) {
-                    register = false;
-                    edef = it;
-                    def.substitute, it = try self.replaceName(sdef, edef, def.substitute);
+                '{' => if (!quote and !brace) { register = true; sdef = it; },
+                '}' => if (!quote and !brace) { register = false; edef = it;
+                    const newSub, it = try self.replaceName(idef, sdef, edef, &def.substitute);
+                    self.alloc.free(def.substitute);
+                    def.substitute = newSub;
+                    self.definitions.definitions.items[idef] = def;
                 },
                 else => {},
             }
