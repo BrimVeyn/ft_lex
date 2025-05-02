@@ -3,7 +3,9 @@ const LexTokenizerModule    = @import("Tokenizer.zig");
 const LexTokenizer          = LexTokenizerModule.LexTokenizer;
 const LexToken              = LexTokenizerModule.LexTokenizer.LexToken;
 const LexTokenizerError     = LexTokenizerModule.LexTokenizer.LexTokenizerError;
-const Definitions           = LexTokenizerModule.Definitions;
+
+const DefinitionsModule     = @import("Definitions.zig");
+const Definitions           = DefinitionsModule.Definitions;
 
 const LexParser = @This();
 
@@ -14,6 +16,7 @@ const LexParserError = error {
 } || error { OutOfMemory };
 
 definitions: Definitions,
+// rules: Rules,
 tokenizer: LexTokenizer,
 alloc: std.mem.Allocator,
 
@@ -29,7 +32,7 @@ pub fn init(alloc: std.mem.Allocator, fileName: []u8) !LexParser {
     };
 
     return .{
-        .tokenizer = LexTokenizer.init(alloc, rawContent, .Definitions, fileName),
+        .tokenizer = LexTokenizer.init(alloc, rawContent, fileName),
         .alloc = alloc,
         .definitions = try Definitions.init(alloc),
     };
@@ -61,10 +64,10 @@ fn replaceName(self: *LexParser, idef: usize, sdef: usize, edef: usize, def: *[]
 
     const substitute = blk: {
         for (self.definitions.definitions.items, 0..) |innerDef, it| {
-            std.debug.print("Comparing: {s} w {s}\n", .{innerDef.name, def.*[sdef + 1..edef]});
+            // std.debug.print("Comparing: {s} w {s}\n", .{innerDef.name, def.*[sdef + 1..edef]});
             if (std.mem.eql(u8, innerDef.name, def.*[sdef + 1..edef])) {
                 if (it == idef) return error.RecursiveDefinitionNotAllowed;
-                std.debug.print("match: {s}: {s}\n", .{def.*[sdef + 1..edef], innerDef.name});
+                // std.debug.print("match: {s}: {s}\n", .{def.*[sdef + 1..edef], innerDef.name});
                 break :blk innerDef.substitute;
             }
         }
@@ -93,7 +96,7 @@ fn expandDefinitions(self: *LexParser) !void {
             const prev: ?u8 = if (it >= 1) def.substitute[it - 1] else null;
             const curr: u8 = def.substitute[it];
 
-            std.debug.print("{d}:{c}\n", .{it, curr});
+            // std.debug.print("{d}:{c}\n", .{it, curr});
             if (prev != null and prev == '\\')
                 continue;
 
@@ -111,15 +114,17 @@ fn expandDefinitions(self: *LexParser) !void {
                 else => {},
             }
         }
-        std.debug.print("{s}: {s}\n", .{def.name, def.substitute});
+        // std.debug.print("{s}: {s}\n", .{def.name, def.substitute});
     }
 }
 
 pub fn parse(self: *LexParser) !void {
+    //Skip potential blank lines
+    self.tokenizer.eatWhitespacesAndNewline();
+
     //Parse definition section
     outer: while (true) {
         const token = try self.advance();
-        std.debug.print("Token: {}\n", .{token});
         switch (token) {
             .cCode => |code| try self.definitions.cCodeFragments.append(self.alloc, code),
             .definition => |def| try self.definitions.definitions.append(
@@ -144,10 +149,26 @@ pub fn parse(self: *LexParser) !void {
                 .YYTextType => |v| self.definitions.yytextType = v,
             },
             .EndOfSection => break: outer,
+            .comment => continue: outer,
             else => std.debug.print("Unimplemented parser\n", .{}),
         }
     }
     self.expandDefinitions() catch |e| return self.logError(e);
+
+    self.tokenizer.changeContext(.Rules);
+    //Skip potential blank lines
+    self.tokenizer.eatWhitespacesAndNewline();
+
+    outer: while (true) {
+        const token = try self.advance();
+        switch (token) {
+
+            .EOF, .EndOfSection => break: outer,
+            else => {}
+        }
+    }
+
+    std.debug.print("{}\n", .{self.definitions});
 
     std.debug.print("End of definition section\n", .{});
 }

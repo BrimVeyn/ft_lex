@@ -1,72 +1,11 @@
-const std = @import("std");
-const print = std.debug.print;
-
-pub const CCode = struct {
-    lineNo: usize,
-    code: []u8,
-};
-
-pub const Definition = struct {
-    name: []u8,
-    substitute: []u8,
-};
-
-pub const Definitions = struct {
-
-    pub const StartConditions = struct {
-        inclusive: std.ArrayListUnmanaged([]u8),
-        exclusive: std.ArrayListUnmanaged([]u8),
-
-        pub fn init(alloc: std.mem.Allocator) !StartConditions {
-            return .{
-                .inclusive = try std.ArrayListUnmanaged([]u8).initCapacity(alloc, 5),
-                .exclusive = try std.ArrayListUnmanaged([]u8).initCapacity(alloc, 5),
-            };
-        }
-
-        pub fn deinit(self: *StartConditions, alloc: std.mem.Allocator) void {
-            self.exclusive.deinit(alloc);
-            self.inclusive.deinit(alloc);
-        }
-    };
-
-    pub const YYTextType = enum { Array, Pointer, };
-
-    pub const Params = struct {
-        nPositions: usize = 2500,               //%p n
-        nStates: usize = 500,                   //%n n
-        nTransitions: usize = 2000,             //%a n
-        nParseTreeNodes: usize = 1000,          //%e n
-        nPackedCharacterClass: usize = 1000,    //%k n
-        nOutputArray: usize = 3000,             //%o n
-    };
-
-    yytextType: YYTextType = .Array,
-    cCodeFragments: std.ArrayListUnmanaged(CCode),
-    definitions: std.ArrayListUnmanaged(Definition),
-    params: Params = .{},
-    startConditions: StartConditions,
-
-    pub fn init(alloc: std.mem.Allocator) !Definitions {
-        return .{
-            .cCodeFragments = try std.ArrayListUnmanaged(CCode).initCapacity(alloc, 5),
-            .definitions = try std.ArrayListUnmanaged(Definition).initCapacity(alloc, 5),
-            .startConditions = try StartConditions.init(alloc),
-        };
-    }
-
-    pub fn deinit(self: *Definitions, alloc: std.mem.Allocator) void {
-        self.cCodeFragments.deinit(alloc);
-        for (self.definitions.items) |item| alloc.free(item.substitute);
-        self.definitions.deinit(alloc);
-        self.startConditions.deinit(alloc);
-    }
-
-};
+const std               = @import("std");
+const DefinitionModule  = @import("Definitions.zig");
+const Definitions       = DefinitionModule.Definitions;
+const print             = std.debug.print;
 
 
 pub const LexTokenizer = struct {
-
+    
     pub const LexTokenizerError = error {
         UnrecognizedPercentDirective,
         UnexpectedEOF,
@@ -92,8 +31,9 @@ pub const LexTokenizer = struct {
     }; 
 
     pub const LexToken = union(enum) {
-        cCode: CCode,
-        definition: Definition,
+        comment: void,
+        cCode: Definitions.CCode,
+        definition: Definitions.Definition,
         EndOfSection: void,
         EOF: void,
         param: ParamType,
@@ -122,6 +62,7 @@ pub const LexTokenizer = struct {
                 .param => |p| try std.json.stringify(p, .{ .whitespace = .indent_2 }, writer),
                 .EndOfSection => _ = try writer.write("End of section\n"),
                 .EOF => _ = try writer.write("EOF\n"),
+                .comment => _ = try writer.write("COMMENT\n"),
             }
         }
     };
@@ -136,16 +77,20 @@ pub const LexTokenizer = struct {
         absolute: usize = 0,
     } = .{},
 
-    pub fn init(alloc: std.mem.Allocator, input: []u8, ctx: LexTokenizerCtx, fileName: ?[]u8) LexTokenizer {
+    pub fn init(alloc: std.mem.Allocator, input: []u8, fileName: ?[]u8) LexTokenizer {
         return .{
             .alloc = alloc,
             .input = input,
             .fileName = fileName,
-            .nextFn = switch (ctx) {
-                .Definitions => &nextDefinitions,
-                .Rules => &nextRules,
-                .UserSubroutines => &nextUserSubroutines,
-            },
+            .nextFn = &nextDefinitions,
+        };
+    }
+
+    pub fn changeContext(self: *LexTokenizer, ctx: LexTokenizerCtx) void {
+        self.nextFn = switch (ctx) {
+            .Rules => &nextRules,
+            .Definitions => &nextDefinitions,
+            .UserSubroutines => &nextUserSubroutines,
         };
     }
 
@@ -216,7 +161,10 @@ pub const LexTokenizer = struct {
         };
     }
 
-    inline fn eatComment(self: *LexTokenizer) void {
+    inline fn eatComment(self: *LexTokenizer) !LexToken {
+        const nextChar = self.peekN(2);
+        if (nextChar == null or nextChar != '*') return error.BadCharacter;
+
         while (true) {
             const currC, const nextC = .{self.peekN(1), self.peekN(2)};
             if (currC != null and nextC != null and 
@@ -227,17 +175,16 @@ pub const LexTokenizer = struct {
             }
             _ = self.getC();
         }
+        self.eatWhitespacesAndNewline();
+        return LexToken{.comment ={}};
     }
 
-    inline fn eatWhitespacesAndNewline(self: *LexTokenizer) void {
+    pub inline fn eatWhitespacesAndNewline(self: *LexTokenizer) void {
         while (true) {
-            const currC, const nextC = .{ self.peekN(1), self.peekN(2) };
+            const currC = self.peekC();
             if (currC == null)
                 break;
 
-            if (currC == '/' and nextC != null and nextC == '*') {
-                self.eatComment();
-            }
             if (currC == '\n') {
                 if (self.skipEmptyLine()) {
                     continue;
@@ -446,24 +393,54 @@ pub const LexTokenizer = struct {
     }
 
     pub fn nextDefinitions(self: *LexTokenizer) LexTokenizerError!LexToken {
+        //Skip potential blanks on first call
+        if (self.pos.absolute == 0) self.eatWhitespacesAndNewline();
+
         return if (self.peekC()) |c| switch (c) {
-            ' ', 0x09 ... 0x0D => self.getCLine() catch |e| return self.logError(e),
+            ' ', 0x09 ... 0x0D => self.getCLine() catch |e| self.logError(e),
+            '/' => self.eatComment() catch |e| self.logError(e),
             '%' => if (self.peekN(2)) |cPeek| switch (cPeek) {
-                    '%' => { _ = self.getC(); return .EndOfSection; },
+                    '%' => { _ = self.getN(2); return .EndOfSection; },
                     '{' => self.getCBlock() catch |e| return self.logError(e),
-                    's', 'S', 'x', 'X', => self.getStartCondition() catch |e| return self.logError(e),
-                    'p', 'n', 'a', 'e', 'k', 'o' => self.getParam() catch |e| return self.logError(e),
+                    's', 'S', 'x', 'X', => self.getStartCondition() catch |e| self.logError(e),
+                    'p', 'n', 'a', 'e', 'k', 'o' => self.getParam() catch |e| self.logError(e),
                     else => self.logError(error.UnrecognizedPercentDirective),
                 } else self.logError(error.UnexpectedEOF),
-            else => self.getDefinition() catch |e| return self.logError(e),
+            else => self.getDefinition() catch |e| self.logError(e),
         } else self.logError(error.UnexpectedEOF);
     }
-    
 
+    fn getRule(self: *LexTokenizer) !LexToken {
+        var quote, var brace = [_]bool {false, false};
+        const sRegex: usize = self.pos.absolute;
+        while (true) {
+            // const prev = if (self.pos.absolute != sRegex) self.input[self.pos.absolute - 1] else null;
+            const curr = self.peekC() orelse break;
+            switch (curr) {
+                '[' => brace = true,
+                ']' => brace = false,
+            }
+            if (std.mem.indexOfScalar(u8, &std.ascii.whitespace, curr) != null) {
+                break;
+            }
+            _ = self.getC();
+        }
+        const regex = self.input[sRegex..self.pos.absolute];
+        std.debug.print("regex: {s}", .{regex});
+
+        return error.BadCharacter;
+    }
+    
     pub fn nextRules(self: *LexTokenizer) LexTokenizerError!LexToken {
-        return LexToken{
-            .definition = .{ .name = self.input[0..4], .substitute = self.input[0..4] },
-        };
+        return if (self.peekC()) |c| switch (c) {
+            ' ', 0x09 ... 0x0D => {self.eatWhitespaces(); return LexToken{.comment = {}}; },
+            '/' => self.eatComment() catch |e| self.logError(e),
+            '%' => if (self.peekN(2)) |cPeek| switch (cPeek) {
+                '%' => { _ = self.getN(2); return .EndOfSection; },
+                else => self.logError(error.BadCharacter),
+            } else self.logError(error.UnexpectedEOF),
+            else => self.getRule() catch |e| self.logError(e),
+        } else return LexToken{.EOF = {}};
     }
 
     pub fn nextUserSubroutines(self: *LexTokenizer) LexTokenizerError!LexToken {

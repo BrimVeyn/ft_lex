@@ -1,26 +1,12 @@
-%array
+DIGIT [0-9]\ d
 
-%pointer
-
-%array
-
-
-%{ djeidjeid
-	#include "stdio.h"
-
-%} djeide
-
-/*sqalut*/
-
-
-/*
-	This lexer is shit
-
-*/
-
-DIGIT [0-9]
 
 %%
+		
+"if" |
+"then" |
+"else" printf("hello !");
 
+"some" printf("some\n");
 
-{DIGIT}+
+[0-9 ]\	d printf("salut !\n");
