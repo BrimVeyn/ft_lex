@@ -7,16 +7,22 @@ const LexTokenizerError     = LexTokenizerModule.LexTokenizer.LexTokenizerError;
 const DefinitionsModule     = @import("Definitions.zig");
 const Definitions           = DefinitionsModule.Definitions;
 
+const RuleModule            = @import("Rules.zig");
+const Rule                  = RuleModule.Rule;
+
 const LexParser = @This();
 
 const LexParserError = error {
     TooLongAName,
     RecursiveDefinitionNotAllowed,
     NoSuchDefinition,
+    InvalidDefinition,
 } || error { OutOfMemory };
 
+
 definitions: Definitions,
-// rules: Rules,
+rules: std.ArrayListUnmanaged(Rule),
+userSubroutines: ?[]u8 = null,
 tokenizer: LexTokenizer,
 alloc: std.mem.Allocator,
 
@@ -34,6 +40,7 @@ pub fn init(alloc: std.mem.Allocator, fileName: []u8) !LexParser {
     return .{
         .tokenizer = LexTokenizer.init(alloc, rawContent, fileName),
         .alloc = alloc,
+        .rules = try std.ArrayListUnmanaged(Rule).initCapacity(alloc, 10),
         .definitions = try Definitions.init(alloc),
     };
 }
@@ -41,6 +48,8 @@ pub fn init(alloc: std.mem.Allocator, fileName: []u8) !LexParser {
 pub fn deinit(self: *LexParser) void {
     self.alloc.free(self.tokenizer.input);
     self.definitions.deinit(self.alloc);
+    for (self.rules.items) |r| self.alloc.free(r.regex);
+    self.rules.deinit(self.alloc);
 }
 
 fn advance(self: *LexParser) !LexToken {
@@ -52,22 +61,30 @@ fn logError(self: *LexParser, err: LexParserError) LexParserError {
         error.TooLongAName => std.log.err("{s}: bad substitution: too long a name", .{self.tokenizer.getFileName()}),
         error.RecursiveDefinitionNotAllowed => std.log.err("{s}: recursive definition not allowed", .{self.tokenizer.getFileName()}),
         error.NoSuchDefinition => std.log.err("{s}: no such definition", .{self.tokenizer.getFileName()}),
+        error.InvalidDefinition => std.log.err("{s}: invalid regex", .{self.tokenizer.getFileName()}),
         else => {},
     }
     return err;
 }
 
-fn replaceName(self: *LexParser, idef: usize, sdef: usize, edef: usize, def: *[]u8) !struct { []u8, usize } {
+fn isValidName(slice: []u8) bool {
+    if (slice.len == 0) return false;
+    if (!(std.ascii.isAlphabetic(slice[0]) or slice[0] == '_')) return false;
+    for (slice[1..]) |c| {
+        if (!(std.ascii.isAlphanumeric(c) or c == '_')) return false;
+    }
+    return true;
+}
+
+fn expandDefinition(self: *LexParser, idef: usize, sdef: usize, edef: usize, def: *[]u8) !struct { []u8, usize } {
     var buffer: [256]u8 = .{0} ** 256;
     var stream = std.io.fixedBufferStream(&buffer);
     var writer = stream.writer();
 
     const substitute = blk: {
         for (self.definitions.definitions.items, 0..) |innerDef, it| {
-            // std.debug.print("Comparing: {s} w {s}\n", .{innerDef.name, def.*[sdef + 1..edef]});
             if (std.mem.eql(u8, innerDef.name, def.*[sdef + 1..edef])) {
                 if (it == idef) return error.RecursiveDefinitionNotAllowed;
-                // std.debug.print("match: {s}: {s}\n", .{def.*[sdef + 1..edef], innerDef.name});
                 break :blk innerDef.substitute;
             }
         }
@@ -88,25 +105,27 @@ fn replaceName(self: *LexParser, idef: usize, sdef: usize, edef: usize, def: *[]
 fn expandDefinitions(self: *LexParser) !void {
     for (0..self.definitions.definitions.items.len) |idef| {
         var def = self.definitions.definitions.items[idef];
-        var quote, var brace, var register = [_]bool{ false, false, false };
+        var quote, var register = [_]bool{ false, false };
+        var brace: usize = 0;
         var it: usize = 0;
         var sdef, var edef = [_]usize {0, 0};
 
         while (it < def.substitute.len) : (it += 1) {
-            const prev: ?u8 = if (it >= 1) def.substitute[it - 1] else null;
             const curr: u8 = def.substitute[it];
-
-            // std.debug.print("{d}:{c}\n", .{it, curr});
-            if (prev != null and prev == '\\')
-                continue;
+            if (curr == '\\') { it += 1; continue; }
 
             switch (curr) {
                 '"' => quote = !quote,
-                '[' => brace = true,
-                ']' => brace = false,
-                '{' => if (!quote and !brace) { register = true; sdef = it; },
-                '}' => if (!quote and !brace) { register = false; edef = it;
-                    const newSub, it = try self.replaceName(idef, sdef, edef, &def.substitute);
+                '[' => brace += 1,
+                ']' => brace -|= 1,
+                '{' => if (!quote and brace == 0) { register = true; sdef = it; },
+                '}' => if (!quote and brace == 0) { 
+                    if (register == false) return error.InvalidDefinition;
+                    register = false; edef = it;
+                    if (!isValidName(def.substitute[sdef + 1..edef])) {
+                        continue;
+                    }
+                    const newSub, it = try self.expandDefinition(idef, sdef, edef, &def.substitute);
                     self.alloc.free(def.substitute);
                     def.substitute = newSub;
                     self.definitions.definitions.items[idef] = def;
@@ -114,11 +133,69 @@ fn expandDefinitions(self: *LexParser) !void {
                 else => {},
             }
         }
-        // std.debug.print("{s}: {s}\n", .{def.name, def.substitute});
     }
 }
 
-pub fn parse(self: *LexParser) !void {
+fn expandRule(self: *LexParser, sSub: usize, eSub: usize, regex: *[]u8) !struct { []u8, usize } {
+    var buffer: [256]u8 = .{0} ** 256;
+    var stream = std.io.fixedBufferStream(&buffer);
+    var writer = stream.writer();
+
+    const substitute = blk: {
+        for (self.definitions.definitions.items) |innerDef| {
+            if (std.mem.eql(u8, innerDef.name, regex.*[sSub + 1..eSub])) {
+                break :blk innerDef.substitute;
+            }
+        }
+        return error.NoSuchDefinition;
+    };
+
+    var newIt: usize = 0;
+    newIt += writer.write(regex.*[0..sSub]) catch return error.TooLongAName;
+    newIt += writer.write(substitute) catch return error.TooLongAName;
+    _ = writer.write(regex.*[eSub + 1..]) catch return error.TooLongAName;
+
+    return .{
+        try self.alloc.dupe(u8, std.mem.trimRight(u8, buffer[0..], "\x00\n ")),
+        newIt - 1,
+    };
+}
+
+fn expandRules(self: *LexParser) !void {
+    for (0..self.rules.items.len) |idef| {
+        var rule = self.rules.items[idef];
+        var quote, var register = [_]bool{ false, false };
+        var brace: usize = 0;
+        var it: usize = 0;
+        var sSub, var eSub = [_]usize {0, 0};
+
+        while (it < rule.regex.len) : (it += 1) {
+            const curr: u8 = rule.regex[it];
+            if (curr == '\\') { it += 1; continue; }
+
+            switch (curr) {
+                '"' => quote = !quote,
+                '[' => brace += 1,
+                ']' => brace -|= 1,
+                '{' => if (!quote and brace == 0) { register = true; sSub = it; },
+                '}' => if (!quote and brace == 0) { 
+                    if (register == false) return error.InvalidDefinition;
+                    register = false; eSub = it;
+                    if (!isValidName(rule.regex[sSub + 1..eSub])) {
+                        continue;
+                    }
+                    const newSub, it = try self.expandRule(sSub, eSub, &rule.regex);
+                    self.alloc.free(rule.regex);
+                    rule.regex = newSub;
+                    self.rules.items[idef] = rule;
+                },
+                else => {},
+            }
+        }
+        // std.debug.print("After sub: {s}\n", .{rule.regex});
+    }
+}
+fn parseDefinitions(self: *LexParser) !void {
     //Skip potential blank lines
     self.tokenizer.eatWhitespacesAndNewline();
 
@@ -154,21 +231,47 @@ pub fn parse(self: *LexParser) !void {
         }
     }
     self.expandDefinitions() catch |e| return self.logError(e);
+    std.debug.print("{}\n", .{self.definitions});
+}
 
-    self.tokenizer.changeContext(.Rules);
+fn parseRules(self: *LexParser) !void {
     //Skip potential blank lines
     self.tokenizer.eatWhitespacesAndNewline();
 
     outer: while (true) {
         const token = try self.advance();
+        // std.debug.print("Token: {}\n", .{token});
         switch (token) {
-
+            .rule => |r| try self.rules.append(self.alloc, .{
+                .regex = try self.alloc.dupe(u8, r.regex),
+                .code = r.code,
+            }),
             .EOF, .EndOfSection => break: outer,
             else => {}
         }
     }
+    //Expand {DEFINITION}
+    self.expandRules() catch |e| return self.logError(e);
+    for (self.rules.items) |item| std.debug.print("{}\n", .{item});
+}
 
-    std.debug.print("{}\n", .{self.definitions});
+fn parseUserSubroutines(self: *LexParser) !void {
+    //Skip potential blank lines
+    self.tokenizer.eatWhitespacesAndNewline();
+    const maybeSuroutine = try self.advance();
+    switch (maybeSuroutine) {
+        .userSuboutines => |routine| self.userSubroutines = routine,
+        else => self.userSubroutines = null,
+    }
+    std.debug.print("Subroutine: \"{s}\"\n", .{self.userSubroutines orelse "null"});
+}
 
-    std.debug.print("End of definition section\n", .{});
+pub fn parse(self: *LexParser) !void {
+
+    try self.parseDefinitions();
+    self.tokenizer.changeContext(.Rules);
+    try self.parseRules();
+    self.tokenizer.changeContext(.UserSubroutines);
+    try self.parseUserSubroutines();
+
 }

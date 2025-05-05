@@ -2,6 +2,9 @@ const std               = @import("std");
 const DefinitionModule  = @import("Definitions.zig");
 const Definitions       = DefinitionModule.Definitions;
 const print             = std.debug.print;
+const mem               = std.mem;
+const RulesModule       = @import("Rules.zig");
+const Rule              = RulesModule.Rule;
 
 
 pub const LexTokenizer = struct {
@@ -37,6 +40,8 @@ pub const LexTokenizer = struct {
         EndOfSection: void,
         EOF: void,
         param: ParamType,
+        rule: Rule,
+        userSuboutines: []u8,
         startCondition: struct {
             type: enum { Inclusive, Exclusive },
             name: std.ArrayList([]u8),
@@ -55,11 +60,14 @@ pub const LexTokenizer = struct {
 
         pub fn format(self: *const LexToken, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
             _ = fmt; _ = options;
+            const jsonOpts: std.json.StringifyOptions = .{ .whitespace = .indent_2 };
             switch (self.*) {
-                .cCode => |item| try std.json.stringify(item, .{ .whitespace = .indent_2 }, writer),
-                .definition => |item| try std.json.stringify(item, .{ .whitespace = .indent_2 }, writer),
-                .startCondition => |s| try std.json.stringify(s, .{ .whitespace = .indent_2 }, writer),
-                .param => |p| try std.json.stringify(p, .{ .whitespace = .indent_2 }, writer),
+                .rule => |rule| try std.json.stringify(rule, jsonOpts, writer),
+                .cCode => |item| try std.json.stringify(item, jsonOpts, writer),
+                .definition => |item| try std.json.stringify(item, jsonOpts, writer),
+                .startCondition => |s| try std.json.stringify(s, jsonOpts, writer),
+                .param => |p| try std.json.stringify(p, jsonOpts, writer),
+                .userSuboutines => |routine| try std.json.stringify(routine, jsonOpts, writer),
                 .EndOfSection => _ = try writer.write("End of section\n"),
                 .EOF => _ = try writer.write("EOF\n"),
                 .comment => _ = try writer.write("COMMENT\n"),
@@ -72,7 +80,7 @@ pub const LexTokenizer = struct {
     fileName: ?[]u8 = null,
     input: []u8,
     pos: struct {
-        line: usize = 0,
+        line: usize = 1,
         col: usize = 0,
         absolute: usize = 0,
     } = .{},
@@ -111,8 +119,10 @@ pub const LexTokenizer = struct {
             else return null;
 
         self.pos.absolute += 1;
+        // std.log.info("char: {c}", .{c});
         switch (c) {
             '\n' => {
+                // std.log.info("NEWLINE", .{});
                 self.pos.line += 1;
                 self.pos.col = 0;
             },
@@ -150,7 +160,7 @@ pub const LexTokenizer = struct {
         return blk: {
             while (self.peekN(it)) |c| {
                 if (c == '\n') {
-                    self.pos.absolute += it - 1;
+                    _ = self.getN(it - 1);
                     break :blk true;
                 }
                 if (!std.ascii.isWhitespace(c)) {
@@ -246,6 +256,7 @@ pub const LexTokenizer = struct {
 
     fn getCLine(self: *LexTokenizer) LexTokenizerError!LexToken {
         const sLine: usize = self.pos.absolute;
+        const sLineNo: usize = self.pos.line;
         while (self.peekC()) |c| {
             if (c == '\n') break;
             _ = self.getC();
@@ -255,8 +266,8 @@ pub const LexTokenizer = struct {
 
         return LexToken {
             .cCode  = .{
-                .code = self.input[sLine..eLine],
-                .lineNo = self.pos.line,
+                .code = @constCast(mem.trim(u8, self.input[sLine..eLine], &std.ascii.whitespace)),
+                .lineNo = sLineNo,
             },
         };
     }
@@ -281,15 +292,14 @@ pub const LexTokenizer = struct {
     }
 
     inline fn isEndOfCBlock(self: *LexTokenizer) !bool {
-        const maybeNextChars = [3]?u8{ self.peekN(1), self.peekN(2), self.peekN(3) };
-        var buffer: [3]u8 = undefined;
-        if (allNotNull(maybeNextChars[0..], &buffer)) |nextChars| {
-            return std.mem.eql(u8, nextChars, "\n%}");
-        } else return error.UnexpectedEOF;
-
-        // //NOTE: YOLO
-        // for ("\n%}", 1..) |cmp, i| if (self.peekN(i)) |c| if (c == cmp) continue else return false else return error.UnexpectedEOF;
-        // return true;
+        for ("\n%}", 1..) |cmp, i| {
+            if (self.peekN(i)) |c| 
+                if (c == cmp) 
+                    continue 
+                else return false 
+            else return error.UnexpectedEOF;
+        }
+        return true;
     }
 
     inline fn eatTillNewLine(self: *LexTokenizer) void {
@@ -298,7 +308,7 @@ pub const LexTokenizer = struct {
         }
     }
 
-    fn getCBlock(self: *LexTokenizer) LexTokenizerError!LexToken {
+    fn getCBlockDef(self: *LexTokenizer) LexTokenizerError!LexToken {
         _ = self.getN(2);
         const sLine: usize = self.pos.line;
         self.eatTillNewLine();
@@ -307,8 +317,8 @@ pub const LexTokenizer = struct {
             _ = self.getC();
         }
         const eBlock: usize = self.pos.absolute;
-
         std.debug.assert(std.mem.eql(u8, self.input[self.pos.absolute..self.pos.absolute + 3], "\n%}"));
+
         _ = self.getN(3);
         self.eatTillNewLine();
         self.eatWhitespacesAndNewline();
@@ -401,7 +411,7 @@ pub const LexTokenizer = struct {
             '/' => self.eatComment() catch |e| self.logError(e),
             '%' => if (self.peekN(2)) |cPeek| switch (cPeek) {
                     '%' => { _ = self.getN(2); return .EndOfSection; },
-                    '{' => self.getCBlock() catch |e| return self.logError(e),
+                    '{' => self.getCBlockDef() catch |e| return self.logError(e),
                     's', 'S', 'x', 'X', => self.getStartCondition() catch |e| self.logError(e),
                     'p', 'n', 'a', 'e', 'k', 'o' => self.getParam() catch |e| self.logError(e),
                     else => self.logError(error.UnrecognizedPercentDirective),
@@ -410,25 +420,76 @@ pub const LexTokenizer = struct {
         } else self.logError(error.UnexpectedEOF);
     }
 
-    fn getRule(self: *LexTokenizer) !LexToken {
-        var quote, var brace = [_]bool {false, false};
-        const sRegex: usize = self.pos.absolute;
-        while (true) {
-            // const prev = if (self.pos.absolute != sRegex) self.input[self.pos.absolute - 1] else null;
-            const curr = self.peekC() orelse break;
-            switch (curr) {
-                '[' => brace = true,
-                ']' => brace = false,
-            }
-            if (std.mem.indexOfScalar(u8, &std.ascii.whitespace, curr) != null) {
-                break;
+    fn getCBlockRule(self: *LexTokenizer) LexTokenizerError!LexToken {
+        const sBlock: usize = self.pos.absolute;
+        const sLine: usize = self.pos.line;
+        _ = self.getC();
+
+        var depth: usize = 1;
+        while (depth != 0) {
+            const c = self.peekC() orelse return error.UnexpectedEOF;
+            switch (c) {
+                '{' => depth += 1,
+                '}' => depth -|= 1,
+                else => {},
             }
             _ = self.getC();
         }
-        const regex = self.input[sRegex..self.pos.absolute];
-        std.debug.print("regex: {s}", .{regex});
+        _ = self.peekC() orelse return error.UnexpectedEOF;
 
-        return error.BadCharacter;
+        const eBlock: usize = self.pos.absolute;
+        self.eatTillNewLine();
+        self.eatWhitespacesAndNewline();
+
+        return LexToken{
+            .cCode = .{
+                .code = self.input[sBlock..eBlock],
+                .lineNo = sLine,
+            },
+        };
+    }
+
+    fn getRule(self: *LexTokenizer) !LexToken {
+        var quote = false;
+        var brace: usize = 0;
+        const sRegex: usize = self.pos.absolute;
+        while (true) {
+            const curr = self.peekC() orelse break;
+            switch (curr) {
+                '"' => { if (brace == 0) quote = !quote; },
+                '[' => brace += 1,
+                ']' => brace -|= 1,
+                '\\' => { 
+                    _ = self.getC() orelse return error.BadCharacter; 
+                    const nextC = self.getC() orelse return error.BadCharacter; 
+                    if (nextC == '\n') { return error.BadCharacter; }
+                    else continue;
+                },
+                else => {},
+            }
+            if (
+                !quote and brace == 0 and 
+                mem.indexOfScalar(u8, &std.ascii.whitespace, curr) != null
+            ) { break; }
+            _ = self.getC();
+        }
+        const regex = self.input[sRegex..self.pos.absolute];
+        // std.debug.print("got regex: {s}: lineno: {d}\n", .{regex, self.getLineNo()});
+        self.eatWhitespaces();
+
+        const code = if (self.peekC()) |c| switch (c) {
+            '{' => try self.getCBlockRule(),
+            else => try self.getCLine(),
+        } else return error.BadCharacter;
+
+        self.eatWhitespacesAndNewline();
+
+        return LexToken {
+            .rule = .{
+                .regex = regex,
+                .code = code.cCode,
+            }
+        };
     }
     
     pub fn nextRules(self: *LexTokenizer) LexTokenizerError!LexToken {
@@ -444,8 +505,9 @@ pub const LexTokenizer = struct {
     }
 
     pub fn nextUserSubroutines(self: *LexTokenizer) LexTokenizerError!LexToken {
-        return LexToken{
-            .definition = .{ .name = self.input[0..4], .substitute = self.input[0..4] },
+        if (self.pos.absolute == self.input.len) return LexToken{.EOF = {}};
+        return LexToken {
+            .userSuboutines = self.input[self.pos.absolute..],
         };
     }
 };

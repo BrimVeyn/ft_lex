@@ -11,7 +11,7 @@ const Tokenizer         = TokenizerModule.Tokenizer;
 const Token             = TokenizerModule.Token;
 
 const ParserModule      = @import("regex/Parser.zig");
-const Parser            = ParserModule.Parser;
+const RegexParser            = ParserModule.Parser;
 const RegexNode         = ParserModule.RegexNode;
 
 const NFAModule         = @import("regex/NFA.zig");
@@ -50,7 +50,7 @@ pub fn interactiveMode(alloc: std.mem.Allocator) !void {
         const regex = std.mem.trimRight(u8, buf[0..], "\n\x00");
 
         //Init parser
-        var parser = try Parser.init(alloc, regex);
+        var parser = try RegexParser.init(alloc, regex);
         defer parser.deinit();
 
         //Parser expr
@@ -154,13 +154,14 @@ pub fn main() !u8 {
     if (args.len == arg_it) {
         try interactiveMode(alloc);
     } else {
-        var parser = try LexParser.init(alloc, args[arg_it]);
-        defer parser.deinit();
+        var lexParser = try LexParser.init(alloc, args[arg_it]);
+        defer lexParser.deinit();
 
-        parser.parse() catch {
+        lexParser.parse() catch {
             // std.log.err("{!}", .{e});
             return 1;
         };
+        const regexParser = try regexParser.
     }
     return 0;
 }
