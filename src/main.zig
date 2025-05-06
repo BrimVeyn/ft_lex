@@ -50,7 +50,7 @@ pub fn interactiveMode(alloc: std.mem.Allocator) !void {
         const regex = std.mem.trimRight(u8, buf[0..], "\n\x00");
 
         //Init parser
-        var parser = try RegexParser.init(alloc, regex);
+        var parser = try RegexParser.initWithSlice(alloc, regex);
         defer parser.deinit();
 
         //Parser expr
@@ -78,8 +78,12 @@ pub fn interactiveMode(alloc: std.mem.Allocator) !void {
         };
         // std.debug.print("{s}", .{try nfa.stringify(alloc)});
 
+        var accept_list = std.ArrayList(DFA.AcceptState).init(alloc);
+        defer accept_list.deinit();
+        try accept_list.append(.{ .state = nfa.accept, .priority = 0 });
+
         // Init dfa builder
-        var dfa = DFA.init(alloc, nfa, yy_ec_highest);
+        var dfa = DFA.init(alloc, nfa, accept_list, yy_ec_highest);
         defer dfa.deinit();
 
         //Build dfa from nfa
@@ -87,7 +91,7 @@ pub fn interactiveMode(alloc: std.mem.Allocator) !void {
 
         // std.debug.print("{s}", .{try dfa.stringify(alloc)});
 
-        Graph.dotFormat(regex, nfa, dfa, &yy_ec);
+        // Graph.dotFormat(regex, nfa, dfa, &yy_ec);
     }
 }
 
@@ -161,7 +165,47 @@ pub fn main() !u8 {
             // std.log.err("{!}", .{e});
             return 1;
         };
-        const regexParser = try regexParser.
+        var regexParser = try RegexParser.init(alloc);
+        defer regexParser.deinit();
+
+        var headList = std.ArrayList(*RegexNode).init(alloc);
+        defer headList.deinit();
+
+        for (lexParser.rules.items) |rule| {
+            regexParser.loadSlice(rule.regex);
+            const head = regexParser.parse() catch |e| {
+                std.log.err("\"{s}\": {!}", .{rule.regex, e});
+                return 1;
+            };
+            try headList.append(head);
+        }
+
+        const yy_ec_highest = try EC.buildEquivalenceTable(alloc, regexParser.classSet, &yy_ec);
+
+        var nfaBuilder = try NFAModule.NFABuilder.init(alloc, &regexParser, &yy_ec);
+        defer nfaBuilder.deinit();
+
+        var nfaList = std.ArrayList(NFA).init(alloc);
+        defer nfaList.deinit();
+
+        for (headList.items) |head| {
+            const nfa = nfaBuilder.astToNfa(head) catch |e| {
+                std.log.err("NFA: {!}", .{e});
+                continue;
+            };
+            try nfaList.append(nfa);
+        }
+
+        const unifiedNfa, const acceptList = try nfaBuilder.merge(nfaList.items);
+        defer acceptList.deinit();
+
+        var dfa = DFA.init(alloc, unifiedNfa, acceptList, yy_ec_highest);
+        defer dfa.deinit();
+
+        try dfa.subset_construction();
+
+        Graph.dotFormat("unified", lexParser, unifiedNfa, dfa, &yy_ec);
+
     }
     return 0;
 }

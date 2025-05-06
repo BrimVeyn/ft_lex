@@ -1,6 +1,8 @@
-const std = @import("std");
-const NFA = @import("NFA.zig").NFA;
-const DFA = @import("DFA.zig").DFA;
+const std       = @import("std");
+const NFA       = @import("NFA.zig").NFA;
+const DFA       = @import("DFA.zig").DFA;
+const LexParser = @import("../lex/Parser.zig");
+const ColorCycler = @import("ColorCycler.zig");
 
 const format:[]const u8 = 
 \\digraph Combined {{
@@ -12,6 +14,11 @@ const format:[]const u8 =
 \\ subgraph cluster_dfa {{
 \\  label="DFA for {s}"
 \\{s}
+\\      subgraph cluster_regex {{
+\\            label="Rules"
+\\            node [shape=box];
+\\            {s}
+\\        }}
 \\ }}
 \\
 \\ subgraph cluster_nfa {{
@@ -19,17 +26,19 @@ const format:[]const u8 =
 \\
 \\  start [shape=point, width=0.2];
 \\  edge [style=solid];
-\\  start -> n1;
+\\  start -> n0;
 \\
 \\{s}
 \\ }}
 \\
-\\    subgraph cluster_ec {{
+\\  subgraph cluster_ec {{
 \\        label="Equivalence Classes"
 \\        node [shape=box];
 \\{s}
 \\    }}
+
 \\}}
+\\
 ;
 //regex, nfa, regex, dfa
 
@@ -89,9 +98,24 @@ fn stringifyClassSet(
     return try buffer.toOwnedSlice();
 }
 
+fn stringifyRegexs(alloc: std.mem.Allocator, parser: LexParser) ![]u8 {
+    var buffer = std.ArrayList(u8).init(alloc);
+    defer buffer.deinit();
+
+    const writer = buffer.writer();
+    var cycler = ColorCycler{};
+
+    for (parser.rules.items, 0..) |rule, it| {
+        try writer.print("regex{d} [label=\"{0d}: {s}\", style=\"filled\", fillcolor=\"{s}\"]\n", .{it, rule.regex, cycler.getColor(it)});
+    }
+
+    return try buffer.toOwnedSlice();
+}
+
 
 pub fn dotFormat(
     regex: []const u8,
+    lexParser: LexParser,
     nfa: NFA,
     dfa: DFA,
     yy_ec: *[256]u8,
@@ -99,11 +123,12 @@ pub fn dotFormat(
     const nfa_str = nfa.stringify(std.heap.page_allocator) catch return;
     const dfa_str = dfa.stringify(std.heap.page_allocator) catch return;
     const class_set_str = stringifyClassSet(std.heap.page_allocator, yy_ec) catch return;
+    const regex_str = stringifyRegexs(std.heap.page_allocator, lexParser) catch return;
     defer {
         std.heap.page_allocator.free(class_set_str);
         std.heap.page_allocator.free(nfa_str);
+        std.heap.page_allocator.free(regex_str);
         std.heap.page_allocator.free(dfa_str);
     }
-
-    std.debug.print(format, .{regex, dfa_str, regex, nfa_str, class_set_str});
+    std.debug.print(format, .{regex, dfa_str, regex_str, regex, nfa_str, class_set_str});
 }

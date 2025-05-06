@@ -115,9 +115,9 @@ fn expandDefinitions(self: *LexParser) !void {
             if (curr == '\\') { it += 1; continue; }
 
             switch (curr) {
-                '"' => quote = !quote,
-                '[' => brace += 1,
-                ']' => brace -|= 1,
+                '"' => quote = if (brace == 0) quote else !quote,
+                '[' => brace += if (!quote) 1 else 0,
+                ']' => brace -|= if (!quote) 1 else 0,
                 '{' => if (!quote and brace == 0) { register = true; sdef = it; },
                 '}' => if (!quote and brace == 0) { 
                     if (register == false) return error.InvalidDefinition;
@@ -174,16 +174,18 @@ fn expandRules(self: *LexParser) !void {
             if (curr == '\\') { it += 1; continue; }
 
             switch (curr) {
-                '"' => quote = !quote,
-                '[' => brace += 1,
-                ']' => brace -|= 1,
+                '"' => quote = if (brace == 0) quote else !quote,
+                '[' => brace += if (!quote) 1 else 0,
+                ']' => brace -|= if (!quote) 1 else 0,
                 '{' => if (!quote and brace == 0) { register = true; sSub = it; },
                 '}' => if (!quote and brace == 0) { 
-                    if (register == false) return error.InvalidDefinition;
+                    if (register == false) 
+                        return error.InvalidDefinition;
                     register = false; eSub = it;
-                    if (!isValidName(rule.regex[sSub + 1..eSub])) {
+
+                    if (!isValidName(rule.regex[sSub + 1..eSub])) 
                         continue;
-                    }
+
                     const newSub, it = try self.expandRule(sSub, eSub, &rule.regex);
                     self.alloc.free(rule.regex);
                     rule.regex = newSub;
@@ -202,6 +204,7 @@ fn parseDefinitions(self: *LexParser) !void {
     //Parse definition section
     outer: while (true) {
         const token = try self.advance();
+        // std.debug.print("TOKEN: {}", .{token});
         switch (token) {
             .cCode => |code| try self.definitions.cCodeFragments.append(self.alloc, code),
             .definition => |def| try self.definitions.definitions.append(

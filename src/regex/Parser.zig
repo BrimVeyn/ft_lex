@@ -80,8 +80,8 @@ pub const RegexNode = union(enum) {
 const nud_handler_fn = *const fn (self: *Parser) ParserError!*RegexNode;
 const led_handler_fn = *const fn (self: *Parser, left: *RegexNode) ParserError!*RegexNode;
 
-tokenizer: Tokenizer,
-current: Token,
+tokenizer: Tokenizer = undefined,
+current: Token = undefined,
 pool: std.heap.MemoryPool(RegexNode),
 nud_lookup: ?[Tokenizer.TokenCount]?nud_handler_fn = null,
 led_lookup: ?[Tokenizer.TokenCount]?led_handler_fn = null,
@@ -92,18 +92,27 @@ hasSeenTrailingContext: bool = false,
 //Collect character classes
 classSet: std.AutoArrayHashMap(std.StaticBitSet(256), void),
 
-pub fn init(alloc: std.mem.Allocator, input: []const u8) !Parser {
+pub fn initWithSlice(alloc: std.mem.Allocator, input: []const u8) !Parser {
     var tokenizer = Tokenizer.init(input, .RegexExpStart);
     const first_token = tokenizer.next();
-    // std.log.info("Token: {}", .{first_token});
-    const pool  = std.heap.MemoryPool(RegexNode).init(alloc);
-
     return .{
         .tokenizer = tokenizer,
         .current = first_token,
-        .pool = pool,
+        .pool = std.heap.MemoryPool(RegexNode).init(alloc),
         .classSet = std.AutoArrayHashMap(std.StaticBitSet(256), void).init(alloc),
     };
+}
+
+pub fn init(alloc: std.mem.Allocator) !Parser {
+    return .{
+        .pool = std.heap.MemoryPool(RegexNode).init(alloc),
+        .classSet = std.AutoArrayHashMap(std.StaticBitSet(256), void).init(alloc),
+    };
+}
+
+pub fn loadSlice(self: *Parser, slice: []u8) void {
+    self.tokenizer = Tokenizer.init(slice, .RegexExpStart);
+    self.current = self.tokenizer.next();
 }
 
 pub fn deinit(self: *Parser) void {
@@ -191,6 +200,5 @@ pub fn parse(self: *Parser) !*RegexNode {
     if (self.bp_lookup == null or self.nud_lookup == null or self.led_lookup == null) {
         self.fillLookupTables();
     }
-
     return self.parseExpr(.None);
 }

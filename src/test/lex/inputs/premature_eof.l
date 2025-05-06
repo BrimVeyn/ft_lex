@@ -1,10 +1,15 @@
-
-DIGIT [0-9]
-
-ID [_a-zA-Z][_a-zA-Z0-9]*
+DIGIT     [0-9]
+LETTER    [a-zA-Z]
+ALNUM     {LETTER}|{DIGIT}
+PAIR      ab
+TRIPLE    xyz
+HEX       0x{DIGIT}+
+ID        {LETTER}({LETTER}|{DIGIT})*
+WS        [ \t]+
+NEWLINE   \n
+OP        (\+|\-|\*|\/)
+CMP       (==|!=|<=|>=|<|>)
 
 %%
 
-{ID}	printf("Salut !\n");
-
-{DIGIT},{DIGIT}+	printf("Float !\n");
+(ab|cd)* printf("hey");

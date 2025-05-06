@@ -2,6 +2,8 @@ const std           = @import("std");
 const ParserModule  = @import("Parser.zig");
 const ParserMakers  = @import("ParserMakers.zig");
 const NFADump       = @import("NFADump.zig");
+const DFAModule     = @import("DFA.zig");
+const DFA           = DFAModule.DFA;
 pub const StateId   = usize;
 
 
@@ -302,19 +304,21 @@ pub const NFABuilder = struct {
         };
     }
 
-    pub fn merge(self: *NFABuilder, NFAs: []NFA) !NFA {
-        if (NFAs.len == 1) 
-            return NFAs[0];
+    pub fn merge(self: *NFABuilder, NFAs: []NFA) !struct { NFA, std.ArrayList(DFA.AcceptState) } {
+        var acceptList = std.ArrayList(DFA.AcceptState).init(self.alloc);
+        errdefer acceptList.deinit();
 
         const start = try self.makeState(0);
-        const accept = try self.makeState(self.next_id);
         self.next_id += 1;
 
-        for (NFAs) |inner| {
+        for (NFAs, 0..) |inner, it| {
             try start.transitions.append(.{ .symbol = .{ .epsilon = {} }, .to = inner.start});
-            try inner.accept.transitions.append(.{.symbol = .{ .epsilon = {} }, .to = accept});
+            try acceptList.append(.{ .state = inner.accept, .priority = it });
         }
 
-        return NFA{.start = start, .accept = accept };
+        return .{
+            NFA{.start = start, .accept = NFAs[0].accept },
+            acceptList,
+        };
     }
 };

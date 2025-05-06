@@ -5,52 +5,52 @@ digraph Combined {
  node [fontname="monospace", shape=circle];
 
  subgraph cluster_dfa {
-  label="DFA for ([0-9]|[a-f])+|if"
-d0 -> d1 [label="i"]
-d0 -> d2 [label="EC:2"]
-d0 -> d3 [label="EC:3"]
-d1 -> d4 [label="f"]
-d2 [shape="doublecircle"]
-d2 -> d2 [label="EC:2"]
-d2 -> d3 [label="EC:3"]
-d3 [shape="doublecircle"]
-d3 -> d2 [label="EC:2"]
-d3 -> d3 [label="EC:3"]
-d4 [shape="doublecircle"]
+  label="DFA for unified"
+d0 [shape="doublecircle", style="filled", fillcolor="lightgoldenrod2", label="r0"]d0 -> d1 [label="a"]
+d0 -> d2 [label="c"]
+d1 -> d4 [label="b"]
+d2 -> d3 [label="d"]
+d3 [shape="doublecircle", style="filled", fillcolor="lightgoldenrod2", label="r0"]d3 -> d1 [label="a"]
+d3 -> d2 [label="c"]
+d4 [shape="doublecircle", style="filled", fillcolor="lightgoldenrod2", label="r0"]d4 -> d1 [label="a"]
+d4 -> d2 [label="c"]
 
+      subgraph cluster_regex {
+            label="Rules"
+            node [shape=box];
+            regex0 [label="0: (ab|cd)*", style="filled", fillcolor="lightgoldenrod2"]
+
+        }
  }
 
  subgraph cluster_nfa {
-  label="NFA for ([0-9]|[a-f])+|if"
+  label="NFA for unified"
 
   start [shape=point, width=0.2];
   edge [style=solid];
-  start -> n1;
+  start -> n0;
 
+n0 -> n1 [label="ε" style=dashed]
 n1 -> n2 [label="ε" style=dashed]
-n1 -> n10 [label="ε" style=dashed]
-n10 -> n12 [label="i"]
-n12 -> n13 [label="f"]
-n13 -> n14 [label="ε" style=dashed]
+n1 -> n12 [label="ε" style=dashed]
 n2 -> n3 [label="ε" style=dashed]
-n3 -> n4 [label="ε" style=dashed]
-n3 -> n6 [label="ε" style=dashed]
-n6 -> n7 [label="EC:3"]
-n7 -> n8 [label="ε" style=dashed]
-n8 -> n3 [label="ε" style=dashed]
-n8 -> n9 [label="ε" style=dashed]
-n9 -> n14 [label="ε" style=dashed]
-n4 -> n5 [label="EC:2"]
-n5 -> n8 [label="ε" style=dashed]
-n14 [shape="doublecircle"]
+n2 -> n7 [label="ε" style=dashed]
+n7 -> n9 [label="c"]
+n9 -> n10 [label="d"]
+n10 -> n11 [label="ε" style=dashed]
+n11 -> n2 [label="ε" style=dashed]
+n11 -> n12 [label="ε" style=dashed]
+n3 -> n5 [label="a"]
+n5 -> n6 [label="b"]
+n6 -> n11 [label="ε" style=dashed]
+n12 [shape="doublecircle"]
 
  }
 
-    subgraph cluster_ec {
+  subgraph cluster_ec {
         label="Equivalence Classes"
         node [shape=box];
-  ec2 [label="EC 2\n0 1 2 3 4 5 6 7 8 9"];
-  ec3 [label="EC 3\na b c d e f"];
 
     }
 }
+

@@ -5,6 +5,7 @@ const Transition    = NFAModule.Transition;
 const NFA           = NFAModule.NFA;
 const Symbol        = NFAModule.Symbol;
 const stderr        = std.io.getStdErr();
+const DFADump       = @import("DFADump.zig");
 
 const DFATransition = struct {
     symbol: Symbol,
@@ -39,12 +40,10 @@ const StateSetCtx = struct {
 
 const StateSetData = struct {
     transitions: std.ArrayList(DFATransition),
-    accept: bool = false,
+    accept_id: ?usize = null,
     
     pub fn init(alloc: std.mem.Allocator) StateSetData {
-        return .{
-            .transitions = std.ArrayList(DFATransition).init(alloc),
-        };
+        return .{ .transitions = std.ArrayList(DFATransition).init(alloc), };
     }
 
     pub fn deinit(self: *StateSetData) void {
@@ -71,18 +70,28 @@ pub fn printStateSet(self: StateSet) !void {
 pub const DFA = struct {
     alloc: std.mem.Allocator,
     data: DfaTable,
-    accept_id: usize,
+    accept_list: std.ArrayList(AcceptState),
     nfa_start: *State,
     yy_ec_highest: u8,
 
-    pub fn init(alloc: std.mem.Allocator, nfa: NFA, yy_ec_highest: u8) DFA {
-        return .{
-            .alloc = alloc,
-            .data = DfaTable.init(alloc),
-            .nfa_start = nfa.start,
-            .accept_id = nfa.accept.id,
-            .yy_ec_highest = yy_ec_highest,
-        };
+    pub const AcceptState = struct {
+        state: *State,
+        priority: usize,
+    };
+
+    pub fn init(
+        alloc: std.mem.Allocator,
+        nfa: NFA,
+        accept_list: std.ArrayList(AcceptState),
+        yy_ec_highest: u8
+    ) DFA {
+            return .{
+                .alloc = alloc,
+                .data = DfaTable.init(alloc),
+                .nfa_start = nfa.start,
+                .accept_list = accept_list,
+                .yy_ec_highest = yy_ec_highest,
+            };
     }
 
     pub fn deinit(self: *DFA) void {
@@ -95,35 +104,19 @@ pub const DFA = struct {
         }
     }
 
-    pub fn stringify(self: DFA, alloc: std.mem.Allocator) ![]u8 {
-        var buffer = std.ArrayList(u8).init(alloc);
-        defer buffer.deinit();
+    pub const stringify = DFADump.stringify;
 
-        var writer = buffer.writer();
-        var dfa_it = self.data.iterator();
+    fn getAcceptingRule(self: *DFA, set: StateSet) ?usize {
+        var best: ?usize = null; 
 
-        while (dfa_it.next()) |entry|{
-            const i_src = self.data.getIndex(entry.key_ptr.*);
-            if (entry.value_ptr.accept == true) {
-                try writer.print("d{?} [shape=\"doublecircle\"]\n", .{i_src.?});
-            }
-            // std.debug.print("({?}) => ", .{i_src});
-            // try printStateSet(entry.key_ptr.*);
-            for (entry.value_ptr.*.transitions.items) |t| {
-                const i_dest = self.data.getIndex(t.to);
-                switch (t.symbol) {
-                    .char => |s| try writer.print("d{?} -> d{?} [label=\"{c}\"]\n", .{i_src, i_dest, s}),
-                    .epsilon => try writer.print("d{?} -> d{?} [label=\"#\"]\n", .{i_src, i_dest}),
-                    .ec => |ec| try writer.print("d{?} -> d{?} [label=\"EC:{d}\"]\n", .{i_src, i_dest, ec}),
+        for (set.keys()) |s| {
+            for (self.accept_list.items) |aState| {
+                if (s.id == aState.state.id and (best == null or aState.priority < best.?)) {
+                    best = aState.priority;
                 }
             }
         }
-        return try buffer.toOwnedSlice();
-    }
-
-    fn isAccept(self: *DFA, set: StateSet) bool {
-        for (set.keys()) |s| if (s.id == self.accept_id) return true;
-        return false;
+        return best;
     }
 
     fn epsilon_closure(self: *DFA, states: StateSet) !StateSet {
@@ -185,7 +178,7 @@ pub const DFA = struct {
         try queue.append(start_closure);
         try self.data.put(start_closure, .{
             .transitions = std.ArrayList(DFATransition).init(self.alloc),
-            .accept = self.isAccept(start_closure),
+            .accept_id = self.getAcceptingRule(start_closure),
         });
 
         while (queue.pop()) |current_set| {
@@ -202,7 +195,7 @@ pub const DFA = struct {
                 if (!self.data.contains(closure)) {
                     try self.data.put(closure, .{
                         .transitions = std.ArrayList(DFATransition).init(self.alloc),
-                        .accept = self.isAccept(closure),
+                        .accept_id = self.getAcceptingRule(closure),
                     });
                     try queue.append(closure);
 
@@ -232,7 +225,7 @@ pub const DFA = struct {
                 if (!self.data.contains(closure)) {
                     try self.data.put(closure, .{
                         .transitions = std.ArrayList(DFATransition).init(self.alloc),
-                        .accept = self.isAccept(closure),
+                        .accept_id = self.getAcceptingRule(closure), 
                     });
                     try queue.append(closure);
 

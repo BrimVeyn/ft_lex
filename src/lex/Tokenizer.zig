@@ -302,16 +302,17 @@ pub const LexTokenizer = struct {
         return true;
     }
 
-    inline fn eatTillNewLine(self: *LexTokenizer) void {
+    inline fn eatTillNewLine(self: *LexTokenizer) bool {
         while (self.getC()) |c| {
             if (c == '\n') break;
         }
+        return true;
     }
 
     fn getCBlockDef(self: *LexTokenizer) LexTokenizerError!LexToken {
         _ = self.getN(2);
         const sLine: usize = self.pos.line;
-        self.eatTillNewLine();
+        _ = self.eatTillNewLine();
         const sBlock: usize = self.pos.absolute;
         while (!try self.isEndOfCBlock()) {
             _ = self.getC();
@@ -320,7 +321,7 @@ pub const LexTokenizer = struct {
         std.debug.assert(std.mem.eql(u8, self.input[self.pos.absolute..self.pos.absolute + 3], "\n%}"));
 
         _ = self.getN(3);
-        self.eatTillNewLine();
+        _ = self.eatTillNewLine();
         self.eatWhitespacesAndNewline();
         return LexToken{
             .cCode = .{
@@ -370,7 +371,7 @@ pub const LexTokenizer = struct {
             return false;
         }
         _ = self.getN(slice.len);
-        self.eatTillNewLine();
+        _ = self.eatTillNewLine();
         self.eatWhitespacesAndNewline();
         return true;
     }
@@ -388,7 +389,7 @@ pub const LexTokenizer = struct {
 
         self.eatWhitespaces();
         const number = try self.getNumber();
-        self.eatTillNewLine();
+        _ = self.eatTillNewLine();
         self.eatWhitespacesAndNewline();
 
         return switch (id) {
@@ -426,11 +427,33 @@ pub const LexTokenizer = struct {
         _ = self.getC();
 
         var depth: usize = 1;
+        var quote: bool = false;
+        var multiLineComment: bool = false;
+        var oneLineComment: bool = false;
         while (depth != 0) {
-            const c = self.peekC() orelse return error.UnexpectedEOF;
-            switch (c) {
-                '{' => depth += 1,
-                '}' => depth -|= 1,
+            const nextCs = [_]u8 {
+                self.peekN(1) orelse return error.UnexpectedEOF,
+                self.peekN(2) orelse return error.UnexpectedEOF
+            };
+
+            if (!quote and mem.eql(u8, &nextCs, "//")) oneLineComment = true;
+            if (!quote and mem.eql(u8, &nextCs, "/*")) multiLineComment = true;
+
+            if (oneLineComment and nextCs[0] != '\\' and nextCs[1] == '\n') 
+            { _ = self.getN(2); oneLineComment = false; continue; }
+
+            if (multiLineComment and mem.eql(u8, &nextCs, "*/")) 
+            { _ = self.getN(2); multiLineComment = false; continue; }
+
+            if (oneLineComment or multiLineComment) 
+            { _ = self.getC(); continue; }
+
+            switch (nextCs[0]) {
+                '\\' => _ = self.getC(),
+                '\'' => quote = !quote,
+                '"' => quote = !quote,
+                '{' => depth += if (!quote) 1 else 0,
+                '}' => depth -|= if (!quote) 1 else 0,
                 else => {},
             }
             _ = self.getC();
@@ -438,7 +461,7 @@ pub const LexTokenizer = struct {
         _ = self.peekC() orelse return error.UnexpectedEOF;
 
         const eBlock: usize = self.pos.absolute;
-        self.eatTillNewLine();
+        _ = self.eatTillNewLine();
         self.eatWhitespacesAndNewline();
 
         return LexToken{
@@ -474,8 +497,8 @@ pub const LexTokenizer = struct {
             _ = self.getC();
         }
         const regex = self.input[sRegex..self.pos.absolute];
-        // std.debug.print("got regex: {s}: lineno: {d}\n", .{regex, self.getLineNo()});
         self.eatWhitespaces();
+        // std.debug.print("got regex: {s}: lineno: {d}\n", .{regex, self.getLineNo()});
 
         const code = if (self.peekC()) |c| switch (c) {
             '{' => try self.getCBlockRule(),
