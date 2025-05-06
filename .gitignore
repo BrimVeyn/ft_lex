@@ -1,2 +1,6 @@
 .zig-cache/*
 zig-out/*
+experiments/lex.yy.c
+experiments/test.pdf
+experiments/test.png
+experiments/graphs/*
