@@ -203,6 +203,7 @@ pub fn main() !u8 {
         defer dfa.deinit();
 
         try dfa.subset_construction();
+        try dfa.minimize();
 
         Graph.dotFormat("unified", lexParser, unifiedNfa, dfa, &yy_ec);
 

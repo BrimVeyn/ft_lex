@@ -15,15 +15,29 @@ pub const Symbol = union(enum) {
     ec: u8,
     epsilon: void,
 
-    pub fn eql(self: Symbol, rhs: Symbol) bool {
-        if (std.meta.activeTag(self) != std.meta.activeTag(rhs))
+    pub fn eql(lhs: Symbol, rhs: Symbol) bool {
+        if (std.meta.activeTag(lhs) != std.meta.activeTag(rhs))
             return false;
 
-        return switch (rhs) {
-            .char => |c| c == rhs.c,
+        return switch (lhs) {
+            .char => |c| c == rhs.char,
             .epsilon => true,
             .ec => |ec| ec == rhs.ec,
         };
+    }
+
+    /// Should only be used in DFA (no epsilon transitions)
+    pub fn lessThanFn(_: void, a: Symbol, b: Symbol) bool {
+        const tagA = std.meta.activeTag(a);
+        const tagB = std.meta.activeTag(b);
+
+        if (tagA == .char and tagB == .ec) return true;
+        if (tagA == .ec and tagB == .char) return false;
+        if (tagA == .ec and tagB == .ec) {
+            return (a.ec < b.ec);
+        } else {
+            return (a.char < b.char);
+        }
     }
 };
 

@@ -12,4 +12,4 @@ CMP       (==|!=|<=|>=|<|>)
 
 %%
 
-(ab|cd)* printf("hey");
+((ab|bc)*d(e|f*g*)h?i)*(j|k*l(mn|op*)*)*(qr|st(u|v*)*)*

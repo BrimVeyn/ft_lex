@@ -11,6 +11,11 @@ const format:[]const u8 =
 \\ edge [fontname="monospace"];
 \\ node [fontname="monospace", shape=circle];
 \\
+\\ subgraph cluster_dfa_minified {{
+\\  label="Minified DFA"
+\\{s}
+\\ }}
+\\
 \\ subgraph cluster_dfa {{
 \\  label="DFA for {s}"
 \\{s}
@@ -122,6 +127,7 @@ pub fn dotFormat(
 ) void {
     const nfa_str = nfa.stringify(std.heap.page_allocator) catch return;
     const dfa_str = dfa.stringify(std.heap.page_allocator) catch return;
+    const minified_dfa_str = dfa.minimizedStringify(std.heap.page_allocator) catch return;
     const class_set_str = stringifyClassSet(std.heap.page_allocator, yy_ec) catch return;
     const regex_str = stringifyRegexs(std.heap.page_allocator, lexParser) catch return;
     defer {
@@ -130,5 +136,13 @@ pub fn dotFormat(
         std.heap.page_allocator.free(regex_str);
         std.heap.page_allocator.free(dfa_str);
     }
-    std.debug.print(format, .{regex, dfa_str, regex_str, regex, nfa_str, class_set_str});
+    std.debug.print(format, .{
+        minified_dfa_str,
+        regex,
+        dfa_str,
+        regex_str,
+        regex,
+        nfa_str,
+        class_set_str
+    });
 }
