@@ -172,6 +172,7 @@ const Partition = struct {
 };
 
 
+
 const PartitionData = struct {
     set: StateSetSet,
     signature: ?Signature,
@@ -379,18 +380,28 @@ pub const DFA = struct {
     ///Using moore's algorithm
     pub fn minimize(self: *DFA) !void {
         var P = Partition.init(self.alloc);
-        var Aset = StateSetSet.init(self.alloc);
         var NonASet = StateSetSet.init(self.alloc);
 
         var stateIt = self.data.iterator();
         while (stateIt.next()) |entry| {
-            if (entry.value_ptr.accept_id != null) {
-                try Aset.put(entry.key_ptr, {});
+            if (entry.value_ptr.accept_id) |accept_id| {
+                const maybe_idx = blk: {
+                    for (P.data.items, 0..) |G, i|
+                        if (G.accept_id == accept_id) break: blk i;
+                    break :blk null;
+                };
+
+                if (maybe_idx) |idx| {
+                    try P.data.items[idx].set.put(entry.key_ptr, {});
+                } else {
+                    var newSet = StateSetSet.init(self.alloc);
+                    try newSet.put(entry.key_ptr, {});
+                    try P.append(.{ .set = newSet, .signature = null, .accept_id = accept_id });
+                }
             } else {
                 try NonASet.put(entry.key_ptr, {});
             }
         }
-        try P.append(.{ .set = Aset, .signature = null, .accept_id = 0 });
         try P.append(.{ .set = NonASet, .signature = null, .accept_id = null });
 
         std.debug.print("PARTITION: \n", .{});

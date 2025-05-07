@@ -12,4 +12,6 @@ CMP       (==|!=|<=|>=|<|>)
 
 %%
 
-((ab|bc)*d(e|f*g*)h?i)*(j|k*l(mn|op*)*)*(qr|st(u|v*)*)*
+(a|b)* printf("salut !\n");
+
+(c|d)(c|d)* printf("fdp !\n");
