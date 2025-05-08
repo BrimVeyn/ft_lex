@@ -5,6 +5,7 @@ pub fn buildEquivalenceTable(
     sets: std.AutoArrayHashMap(std.StaticBitSet(256), void),
     yy_ec: *[256]u8)
 !u8 {
+
     var signatures = std.AutoArrayHashMap(std.StaticBitSet(256), u8).init(alloc);
     defer signatures.deinit();
 

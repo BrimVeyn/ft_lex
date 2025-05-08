@@ -13,7 +13,7 @@ pub fn isGraph(c: u8) bool {
 }
 
 pub fn dot(c: u8) bool {
-    return c != 0x00 and c != '\n';
+    return c == '\n';
 }
 
 pub fn isOctal(c: u8) bool {

@@ -402,7 +402,8 @@ pub const DFA = struct {
                 try NonASet.put(entry.key_ptr, {});
             }
         }
-        try P.append(.{ .set = NonASet, .signature = null, .accept_id = null });
+        if (NonASet.count() == 0) { NonASet.deinit(); } 
+        else { try P.append(.{ .set = NonASet, .signature = null, .accept_id = null }); }
 
         std.debug.print("PARTITION: \n", .{});
         try partitionDump(self.data, P);

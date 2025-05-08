@@ -89,7 +89,7 @@ bp_lookup: ?[Tokenizer.TokenCount]?BindingPower = null,
 //Used to handle nested grouping
 depth: usize = 0,
 hasSeenTrailingContext: bool = false,
-//Collect character classes
+//Collects character classes
 classSet: std.AutoArrayHashMap(std.StaticBitSet(256), void),
 
 pub fn initWithSlice(alloc: std.mem.Allocator, input: []const u8) !Parser {
@@ -113,6 +113,7 @@ pub fn init(alloc: std.mem.Allocator) !Parser {
 pub fn loadSlice(self: *Parser, slice: []u8) void {
     self.tokenizer = Tokenizer.init(slice, .RegexExpStart);
     self.current = self.tokenizer.next();
+    std.log.info("Token: {}", .{self.current});
 }
 
 pub fn deinit(self: *Parser) void {
@@ -124,7 +125,7 @@ pub fn deinit(self: *Parser) void {
 pub fn advance(self: *Parser) Token {
     const token = self.current;
     self.current = self.tokenizer.next();
-    // std.log.info("Token: {}", .{self.current});
+    std.log.info("Token: {}", .{self.current});
     return token;
 }
 

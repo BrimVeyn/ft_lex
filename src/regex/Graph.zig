@@ -17,7 +17,7 @@ const format:[]const u8 =
 \\ }}
 \\
 \\ subgraph cluster_dfa {{
-\\  label="DFA for {s}"
+\\  label="DFA"
 \\{s}
 \\      subgraph cluster_regex {{
 \\            label="Rules"
@@ -27,7 +27,7 @@ const format:[]const u8 =
 \\ }}
 \\
 \\ subgraph cluster_nfa {{
-\\  label="NFA for {s}"
+\\  label="NFA"
 \\
 \\  start [shape=point, width=0.2];
 \\  edge [style=solid];
@@ -83,14 +83,17 @@ fn stringifyClassSet(
         const class_id = entry.key_ptr.*;
         const chars = entry.value_ptr.items;
 
-        try writer.print("  ec{d} [label=\"EC {d}\\n", .{class_id, class_id});
+        try writer.print("  ec1 [label=\"EC 1: ^(Σ EC2...ECn)\"];\n", .{});
+        try writer.print("  ec{d} [label=\"EC {d}: ", .{class_id, class_id});
 
         var printed = false;
         for (chars) |c| {
             if (printed) try writer.writeAll(" ");
             printed = true;
 
-            if (std.ascii.isPrint(c)) {
+            if (c == '"') {
+                try writer.writeAll("\\\"");
+            }else if (std.ascii.isPrint(c)) {
                 try writer.print("{c}", .{c});
             } else {
                 try writer.print("\\x{X:0>2}", .{c});
@@ -103,6 +106,25 @@ fn stringifyClassSet(
     return try buffer.toOwnedSlice();
 }
 
+
+fn escapeDotString(input: []u8, writer: anytype) !void {
+    for (input) |c| {
+        if (!std.ascii.isPrint(c)) {
+            try writer.print("\\x{X:0>2}", .{c});
+            continue;
+        }
+        switch (c) {
+            '"' => try writer.writeAll("\\\""),
+            '\'' => try writer.writeAll("\\\'"),
+            '\\' => try writer.writeAll("\\\\"),
+            '\n' => try writer.writeAll("\\n"),
+            '\r' => try writer.writeAll("\\r"),
+            '\t' => try writer.writeAll("\\t"),
+            else => try writer.writeByte(c),
+        }
+    }
+}
+
 fn stringifyRegexs(alloc: std.mem.Allocator, parser: LexParser) ![]u8 {
     var buffer = std.ArrayList(u8).init(alloc);
     defer buffer.deinit();
@@ -111,7 +133,9 @@ fn stringifyRegexs(alloc: std.mem.Allocator, parser: LexParser) ![]u8 {
     var cycler = ColorCycler{};
 
     for (parser.rules.items, 0..) |rule, it| {
-        try writer.print("regex{d} [label=\"{0d}: {s}\", style=\"filled\", fillcolor=\"{s}\"]\n", .{it, rule.regex, cycler.getColor(it)});
+        try writer.print("regex{d} [label=\"{0d}:", .{it});
+        try escapeDotString(rule.regex, writer);
+        try writer.print("\", style=\"filled\", fillcolor=\"{s}\"]\n", .{cycler.getColor(it)});
     }
 
     return try buffer.toOwnedSlice();
@@ -119,11 +143,11 @@ fn stringifyRegexs(alloc: std.mem.Allocator, parser: LexParser) ![]u8 {
 
 
 pub fn dotFormat(
-    regex: []const u8,
     lexParser: LexParser,
     nfa: NFA,
     dfa: DFA,
     yy_ec: *[256]u8,
+    output: anytype,
 ) void {
     const nfa_str = nfa.stringify(std.heap.page_allocator) catch return;
     const dfa_str = dfa.stringify(std.heap.page_allocator) catch return;
@@ -136,13 +160,11 @@ pub fn dotFormat(
         std.heap.page_allocator.free(regex_str);
         std.heap.page_allocator.free(dfa_str);
     }
-    std.debug.print(format, .{
+    output.print(format, .{
         minified_dfa_str,
-        regex,
         dfa_str,
         regex_str,
-        regex,
         nfa_str,
         class_set_str
-    });
+    }) catch return;
 }

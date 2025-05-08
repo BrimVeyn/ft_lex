@@ -205,8 +205,10 @@ pub fn main() !u8 {
         try dfa.subset_construction();
         try dfa.minimize();
 
-        Graph.dotFormat("unified", lexParser, unifiedNfa, dfa, &yy_ec);
+        std.debug.print("yy_ec: {d}", .{yy_ec});
 
+        const outFile = try std.fs.cwd().createFile("test.graph", .{});
+        Graph.dotFormat(lexParser, unifiedNfa, dfa, &yy_ec, outFile.writer());
     }
     return 0;
 }

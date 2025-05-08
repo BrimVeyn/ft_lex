@@ -118,7 +118,7 @@ pub const Tokenizer = struct {
         return Token.Eof;
     }
 
-    //Angle bracket is considered literal except if it's the first character of the line
+    ///Angle bracket is considered literal except if it's the first character of the line
     pub fn nextRegexExpStart(self: *Tokenizer) Token {
         while (self.index < self.input.len) {
             const c = self.input[self.index];
@@ -138,17 +138,17 @@ pub const Tokenizer = struct {
         return Token.Eof;
     }
 
-    //Remove special meaning of all meta chars
+    ///Remove special meaning of all meta chars
     pub fn nextBracketExp(self: *Tokenizer) Token {
         while (self.index < self.input.len) {
             const c = self.input[self.index];
             self.index += 1;
-            return Token { .Char = c};
+            return Token { .Char = c };
         }
         return Token.Eof;
     }
 
-    //Remove special meaning of all meta chars except for '\' and '"' (allows the parser to stop)
+    ///Remove special meaning of all meta chars except for '\' and '"' (allows the parser to stop)
     pub fn nextQuoteExp(self: *Tokenizer) Token {
         while (self.index < self.input.len) {
             const c = self.input[self.index];
@@ -156,7 +156,7 @@ pub const Tokenizer = struct {
             return switch(c) {
                 '\\' => Token.Escape,
                 '"' => Token.Quote,
-                else => Token{.Char = c},
+                else => Token{ .Char = c },
             };
         }
         return Token.Eof;

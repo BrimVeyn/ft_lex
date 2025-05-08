@@ -234,7 +234,7 @@ fn parseDefinitions(self: *LexParser) !void {
         }
     }
     self.expandDefinitions() catch |e| return self.logError(e);
-    std.debug.print("{}\n", .{self.definitions});
+    // std.debug.print("{}\n", .{self.definitions});
 }
 
 fn parseRules(self: *LexParser) !void {
@@ -266,7 +266,7 @@ fn parseUserSubroutines(self: *LexParser) !void {
         .userSuboutines => |routine| self.userSubroutines = routine,
         else => self.userSubroutines = null,
     }
-    std.debug.print("Subroutine: \"{s}\"\n", .{self.userSubroutines orelse "null"});
+    // std.debug.print("Subroutine: \"{s}\"\n", .{self.userSubroutines orelse "null"});
 }
 
 pub fn parse(self: *LexParser) !void {
