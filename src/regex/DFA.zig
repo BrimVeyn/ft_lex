@@ -13,8 +13,7 @@ const DFATransition = struct {
 };
 
 const StateSetCtx = struct {
-    pub fn hash(self: StateSetCtx, set: StateSet) u32 {
-        _ = self;
+    pub fn hash(_: StateSetCtx, set: StateSet) u32 {
         var h: u32 = 0;
 
         for (set.keys()) |state| {
@@ -24,14 +23,13 @@ const StateSetCtx = struct {
         return h;
     }
 
-    pub fn eql(self: StateSetCtx, a: StateSet, b: StateSet, _: usize) bool {
-        _ = self;
+    pub fn eql(_: StateSetCtx, a: StateSet, b: StateSet, _: usize) bool {
         if (a.count() != b.count()) 
-            return false;
+        return false;
 
         for (a.keys()) |sA| {
             if (!b.contains(sA))
-                return false;
+            return false;
         }
         return true;
     }
@@ -63,9 +61,8 @@ pub const Signature = struct {
         };
     }
 
-    pub fn deinit(self: *Signature) void {
-        self.data.deinit();
-    }
+    pub fn deinit(self: *Signature) void { self.data.deinit(); }
+    pub fn append(self: *Signature, item: SignatureTransition) !void { try self.data.append(item); }
 
     pub fn sort(self: *Signature) void {
         std.mem.sort(SignatureTransition, self.data.items[0..], {}, SignatureTransition.lessThanFn);
@@ -81,9 +78,6 @@ pub const Signature = struct {
         return true;
     }
 
-    pub fn append(self: *Signature, item: SignatureTransition) !void {
-        try self.data.append(item);
-    }
 };
 
 fn getGroupIdFromSignature(P: Partition, s: Signature) ?usize {
@@ -103,7 +97,7 @@ fn getGroupIdFromSet(P: Partition, s: *StateSet) usize {
     unreachable;
 }
 
-fn repositionD0(table: DfaTable, P: *Partition) void {
+fn repositionD0(table: DFA.DfaTable, P: *Partition) void {
     const d0_index = blk: {
         for (P.data.items, 0..) |p, it| {
             for (p.set.keys()) |set| {
@@ -118,8 +112,6 @@ fn repositionD0(table: DfaTable, P: *Partition) void {
         unreachable;
     };
 
-    std.log.info("D0 index: {d}", .{d0_index});
-
     for (P.data.items) |G| {
         for (G.signature.?.data.items) |*t| {
             if (t.group_id == d0_index) { t.group_id = 0; }
@@ -130,15 +122,13 @@ fn repositionD0(table: DfaTable, P: *Partition) void {
     const tmp = P.data.items[d0_index];
     P.data.items[d0_index] = P.data.items[0];
     P.data.items[0] = tmp;
-
-    std.debug.print("D0 in in group: {d}\n", .{d0_index});
 }
 
 
 const StateSetData = struct {
     transitions: std.ArrayList(DFATransition),
     accept_id: ?usize = null,
-    
+
     pub fn init(alloc: std.mem.Allocator) StateSetData {
         return .{ .transitions = std.ArrayList(DFATransition).init(alloc), };
     }
@@ -152,6 +142,12 @@ const StateSet      = std.AutoArrayHashMap(*State, void);
 const StateSetSet   = std.AutoArrayHashMap(*StateSet, void);
 
 const Partition = struct {
+    pub const PartitionData = struct {
+        set: StateSetSet,
+        signature: ?Signature,
+        accept_id: ?usize,
+    };
+
     data: std.ArrayList(PartitionData),
 
     pub fn init(alloc: std.mem.Allocator) Partition {
@@ -169,17 +165,25 @@ const Partition = struct {
             G.set.deinit();
         }
     }
+
+    pub fn dump(self: Partition, table: DFA.DfaTable) !void {
+        var writer = stderr.writer();
+        for (self.data.items, 0..) |Pdata, i| {
+            const split = Pdata.set;
+            try writer.print("{d}: {{ ", .{i});
+            for (split.keys(), 0..) |set, inner_i| {
+                const key = table.getIndex(set.*).?;
+                if (inner_i == split.keys().len - 1) {
+                    try writer.print("{d} ", .{key});
+                } else {
+                    try writer.print("{d}, ", .{key});
+                }
+            }
+            _ = try writer.write("}\n");
+        }
+    }
 };
 
-
-
-const PartitionData = struct {
-    set: StateSetSet,
-    signature: ?Signature,
-    accept_id: ?usize,
-};
-
-const DfaTable      = std.ArrayHashMap(StateSet, StateSetData, StateSetCtx, true);
 
 pub fn printStateSet(self: StateSet) !void {
     var writer = stderr.writer();
@@ -202,6 +206,7 @@ pub const DFA = struct {
     nfa_start: *State,
     yy_ec_highest: u8,
 
+    pub const DfaTable = std.ArrayHashMap(StateSet, StateSetData, StateSetCtx, true);
     pub const AcceptState = struct {
         state: *State,
         priority: usize,
@@ -213,13 +218,13 @@ pub const DFA = struct {
         accept_list: std.ArrayList(AcceptState),
         yy_ec_highest: u8
     ) DFA {
-            return .{
-                .alloc = alloc,
-                .data = DfaTable.init(alloc),
-                .nfa_start = nfa.start,
-                .accept_list = accept_list,
-                .yy_ec_highest = yy_ec_highest,
-            };
+        return .{
+            .alloc = alloc,
+            .data = DfaTable.init(alloc),
+            .nfa_start = nfa.start,
+            .accept_list = accept_list,
+            .yy_ec_highest = yy_ec_highest,
+        };
     }
 
     pub fn deinit(self: *DFA) void {
@@ -321,7 +326,7 @@ pub const DFA = struct {
                 defer gotos.deinit();
 
                 if (gotos.count() == 0) 
-                    continue;
+                continue;
                 var closure = try self.epsilon_closure(gotos);
 
                 if (!self.data.contains(closure)) {
@@ -351,7 +356,7 @@ pub const DFA = struct {
                 defer gotos.deinit();
 
                 if (gotos.count() == 0) 
-                    continue;
+                continue;
                 var closure = try self.epsilon_closure(gotos);
 
                 if (!self.data.contains(closure)) {
@@ -387,7 +392,7 @@ pub const DFA = struct {
             if (entry.value_ptr.accept_id) |accept_id| {
                 const maybe_idx = blk: {
                     for (P.data.items, 0..) |G, i|
-                        if (G.accept_id == accept_id) break: blk i;
+                    if (G.accept_id == accept_id) break: blk i;
                     break :blk null;
                 };
 
@@ -405,8 +410,8 @@ pub const DFA = struct {
         if (NonASet.count() == 0) { NonASet.deinit(); } 
         else { try P.append(.{ .set = NonASet, .signature = null, .accept_id = null }); }
 
-        std.debug.print("PARTITION: \n", .{});
-        try partitionDump(self.data, P);
+        // std.debug.print("PARTITION: \n", .{});
+        // try P.dump(self.data);
 
         var some: usize = 0;
         while (some < 10000) :(some += 1) {
@@ -417,11 +422,13 @@ pub const DFA = struct {
             }
             for (P.data.items, 0..) |Pdata, gI| {
                 const G = Pdata.set;
-                std.log.info("GROUP: {d}", .{gI});
+                _ = gI;
+                // std.log.info("GROUP: {d}", .{gI});
                 for (G.keys()) |set| {
                     const SdataId = self.data.getIndex(set.*).?;
+                    _ = SdataId;
                     const Sdata = self.data.get(set.*).?;
-                    std.log.info("Evaluating signature for D:{d}", .{SdataId});
+                    // std.log.info("Evaluating signature for D:{d}", .{SdataId});
                     var signature = Signature.init(self.alloc, Pdata.accept_id);
                     for (Sdata.transitions.items) |transition| {
                         const transition_to_ptr = self.data.getKeyPtr(transition.to).?;
@@ -430,10 +437,10 @@ pub const DFA = struct {
                     }
                     signature.sort();
                     //Debug
-                    signature.dump();
+                    // signature.dump();
                     //
                     const g_id = getGroupIdFromSignature(P_new, signature);
-                    std.debug.print("GID: {?}\n", .{g_id});
+                    // std.debug.print("GID: {?}\n", .{g_id});
                     if (g_id == null) {
                         var Nset = StateSetSet.init(self.alloc);
                         try Nset.put(set, {});
@@ -445,33 +452,64 @@ pub const DFA = struct {
                     }
                 }
             }
-            std.log.info("OLD:", .{});
-            try partitionDump(self.data, P);
-            std.log.info("NEW:", .{});
-            try partitionDump(self.data, P_new);
+            // std.log.info("OLD:", .{});
+            // try P.dump(self.data);
+            // std.log.info("NEW:", .{});
+            // try P_new.dump(self.data);
             if (P_new.data.items.len == P.data.items.len) {
                 break;
             }
         }
-        self.minimized = P;
         //Reposition d0 at index 0, so the minimized dfa starts with the group that contains d0
         repositionD0(self.data, &P);
+        self.minimized = P;
+    }
+
+    pub fn compress(self: *DFA) !void {
+        try self.minimized.dump(self.data);
+
+        var yy_meta = try std.ArrayList(u8).initCapacity(self.alloc, self.yy_ec_highest);
+        defer yy_meta.deinit();
+
+        var transTable = try std.ArrayList(std.ArrayList(?usize))
+            .initCapacity(self.alloc, self.minimized.data.items.len);
+
+        for (self.minimized.data.items, 0..) |state, i| {
+            transTable.appendAssumeCapacity(try std.ArrayList(?usize).initCapacity(self.alloc, self.yy_ec_highest + 1));
+            transTable.items[i].expandToCapacity();
+            @memset(transTable.items[i].items[0..], null);
+
+            state.signature.?.dump();
+            for (state.signature.?.data.items) |transition| {
+                transTable.items[i].items[transition.symbol.ec] = transition.group_id;
+            }
+        }
+
+        transTableDump(transTable);
     }
 };
 
-fn partitionDump(table: DfaTable, P: Partition) !void {
-    var writer = stderr.writer();
-    for (P.data.items, 0..) |Pdata, i| {
-        const split = Pdata.set;
-        try writer.print("{d}: {{ ", .{i});
-        for (split.keys(), 0..) |set, inner_i| {
-            const key = table.getIndex(set.*).?;
-            if (inner_i == split.keys().len - 1) {
-                try writer.print("{d} ", .{key});
+const Green         = "\x1b[32m"; // Green for Char and CharClass
+const BrightGreen   = "\x1b[92m"; // Bright green for literal chars
+const Yellow        = "\x1b[33m"; // Yellow for Concat and TrailingContext
+const Cyan          = "\x1b[36m"; // Cyan for Repetition
+const Blue          = "\x1b[34m"; // Blue for Alternation
+const Magenta       = "\x1b[35m"; // Magenta for Groups
+const Red           = "\x1b[31m"; // Red for Anchors
+const White         = "\x1b[97m"; // White for label text
+const Reset         = "\x1b[0m";  // Reset color
+
+fn transTableDump(table: std.ArrayList(std.ArrayList(?usize))) void {
+    for (table.items, 0..) |row, i| {
+        std.debug.print("{d:2}: ", .{i});
+        for (row.items) |maybe_t| {
+            if (maybe_t) |t| {
+                std.debug.print("{d:2} ", .{t});
             } else {
-                try writer.print("{d}, ", .{key});
+                std.debug.print("{s}{d:2}{s} ", .{Red, 0, Reset});
             }
         }
-        _ = try writer.write("}\n");
+        std.debug.print("\n", .{});
     }
 }
+
