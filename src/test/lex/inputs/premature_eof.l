@@ -1,9 +1,11 @@
 DIGIT    [0-9]
 ID       [a-z][a-z0-9]*
 
+%x YOANN
+
 %%
 
 
-[a-z]{1,10}	printf("word");
+{DIGIT}+ printf("hello world\n");
 
-[0-9]+"."[0-9]+ printf("float");
+[a-z]+ printf("salut !\n");

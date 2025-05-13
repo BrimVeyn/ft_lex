@@ -465,27 +465,152 @@ pub const DFA = struct {
         self.minimized = P;
     }
 
+    const TestTransTable = [_][6]u8 {
+       [_]u8 { 0,  0,  0,  0,  0,  0, },
+       [_]u8 { 2,  3,  4,  5,  0,  0, },
+       [_]u8 { 0,  0, 16, 17,  0,  0, },
+       [_]u8 { 11,  0,  0,  0, 12,  0, },
+       [_]u8 { 9,  0,  0,  0,  0,  0, },
+       [_]u8 { 6,  0,  0,  0,  0,  0, },
+       [_]u8 { 0,  0,  0,  7,  0,  0, },
+       [_]u8 { 0,  0,  0,  0,  0,  8, },
+       [_]u8 { 0,  0,  0,  0,  0,  0, },
+       [_]u8 { 0, 10,  0,  0,  0,  0, },
+       [_]u8 { 0,  0,  0,  0,  0,  8, },
+       [_]u8 { 0,  0,  0, 15,  0,  0, },
+       [_]u8 { 0,  0,  0, 13, 14,  0, },
+       [_]u8 { 0,  0,  0,  0,  0,  8, },
+       [_]u8 { 0,  0,  0,  0,  0,  8, },
+       [_]u8 { 0,  0,  0,  0,  0,  8, },
+       [_]u8 { 0,  0,  0,  0, 19,  0, },
+       [_]u8 { 0,  0,  0, 18,  0,  0, },
+       [_]u8 { 0,  0,  0,  0,  0,  8, },
+       [_]u8 { 0,  0,  0,  0,  0,  8, },
+    };
+
     pub fn compress(self: *DFA) !void {
         try self.minimized.dump(self.data);
 
-        var yy_meta = try std.ArrayList(u8).initCapacity(self.alloc, self.yy_ec_highest);
-        defer yy_meta.deinit();
+        //Keep track of the transition count to fill the yy_nxt array later
+        var nTransition: usize = 0;
 
-        var transTable = try std.ArrayList(std.ArrayList(?usize))
+        var tempTransTable = try std.ArrayList(std.ArrayList(?usize))
             .initCapacity(self.alloc, self.minimized.data.items.len);
 
         for (self.minimized.data.items, 0..) |state, i| {
-            transTable.appendAssumeCapacity(try std.ArrayList(?usize).initCapacity(self.alloc, self.yy_ec_highest + 1));
-            transTable.items[i].expandToCapacity();
-            @memset(transTable.items[i].items[0..], null);
+            tempTransTable.appendAssumeCapacity(try std.ArrayList(?usize).initCapacity(self.alloc, self.yy_ec_highest + 1));
+            tempTransTable.items[i].expandToCapacity();
+            @memset(tempTransTable.items[i].items[0..], null);
 
-            state.signature.?.dump();
+            nTransition += state.signature.?.data.items.len;
             for (state.signature.?.data.items) |transition| {
-                transTable.items[i].items[transition.symbol.ec] = transition.group_id;
+                tempTransTable.items[i].items[transition.symbol.ec] = transition.group_id;
+            }
+        }
+
+        var base = try std.ArrayList(usize).initCapacity(self.alloc, TestTransTable.len);
+        base.expandToCapacity();
+        base.items[0] = 0;
+
+        nTransition = 0;
+        const transTable = blk: {
+            var ret = try std.ArrayList(std.ArrayList(?usize))
+                .initCapacity(self.alloc, TestTransTable.len);
+            for (TestTransTable, 0..) |row, i| {
+                ret.appendAssumeCapacity(try std.ArrayList(?usize).initCapacity(self.alloc, row.len));
+                ret.items[i].expandToCapacity();
+                @memset(ret.items[i].items[0..], null);
+                for (row, 0..) |t, j| { 
+                    if (t != 0) { 
+                        ret.items[i].items[j] = t;
+                        nTransition += 1;
+                    }
+                }
+            }
+            break: blk ret;
+        };
+
+
+        for (transTable.items[1..], 1..) |row, i| {
+            var offset: usize = 0;
+
+            const allNotNull: std.ArrayList(usize) = blk: {
+                var ret = std.ArrayList(usize).init(self.alloc);
+                for (row.items, 0..) |t, j| { if (t != null) try ret.append(j); }
+                break: blk ret;
+            };
+
+            //For all rows above the current, check that all not null values have only zeroes above them
+            //otherwise, increase offset by one until its true
+            std.debug.print("{s}Need to check for {d}..{d}{s}\n", .{
+                Red,
+                0,
+                i,
+                Reset,
+            });
+            outer: while (true) {
+                defer offset += 1;
+
+                for (transTable.items[0..i], 0..) |aRow, indexLookup|  {
+                    const aRowOffset = base.items[indexLookup];
+                    // std.debug.print("{s}Arow[{d}], Offset: {d}{s}\n", .{
+                    //     Green,
+                    //     indexLookup,
+                    //     aRowOffset,
+                    //     Reset,
+                    // });
+
+                    for (allNotNull.items) |rowIndex| {
+                        const realIndex = rowIndex + offset;
+                        // std.debug.print("Off: {d}, Checking: {d}\n", .{offset, row.items[rowIndex].?});
+                        // std.debug.print("RealIndex: {d}\n", .{realIndex});
+                        if (realIndex < aRowOffset) {
+                            // std.debug.print("pitfall 1\n", .{});
+                            continue;
+                        } else if (realIndex >= (aRow.items.len + aRowOffset)) {
+                            // std.debug.print("pitfall 2\n", .{});
+                            continue;
+                        } else if (aRow.items[realIndex - aRowOffset] == null) {
+                            // std.debug.print("pitfall 3\n", .{});
+                            continue;
+                        } else {
+                            continue :outer;
+                        }
+                    }
+                }
+                base.items[i] = offset;
+                break: outer;
+            }
+        }
+
+        var next = try std.ArrayList(usize).initCapacity(self.alloc, TestTransTable.len);
+        var check = try std.ArrayList(usize).initCapacity(self.alloc, TestTransTable.len);
+
+        var globalOffset: usize = 0;
+        var collected: usize = 0;
+        while (collected != nTransition) {
+            var it: usize = 0;
+            while (it < transTable.items.len) {
+                const rowOffset = base.items[it];
+                const row = transTable.items[it];
+
+                if (globalOffset < rowOffset) { //null
+                    it += 1;
+                } else if (globalOffset >= (row.items.len + rowOffset)) {
+                    it += 1;
+                } else if (row.items[globalOffset - rowOffset] == null) {
+                    it += 1;
+                } else {
+                    collected += 1;
+                    try check.append(it);
+                    try next.append(row.items[globalOffset - rowOffset].?);
+                    globalOffset += 1;
+                }
             }
         }
 
         transTableDump(transTable);
+        compressedTableDump(base, next, check);
     }
 };
 
@@ -498,6 +623,31 @@ const Magenta       = "\x1b[35m"; // Magenta for Groups
 const Red           = "\x1b[31m"; // Red for Anchors
 const White         = "\x1b[97m"; // White for label text
 const Reset         = "\x1b[0m";  // Reset color
+
+const VecUsize = std.ArrayList(usize);
+
+fn compressedTableDump(base: VecUsize, next: VecUsize, check: VecUsize) void {
+    const helper = struct {
+        fn head(str: []const u8) void { std.debug.print("{s:10}:", .{str}); }
+        fn body(table: VecUsize) void { for (table.items) |i| std.debug.print("{d:4}", .{i}); std.debug.print("\n", .{}); }
+        fn enumerate(max: usize) void { for (0..max) |i| std.debug.print("{d:4}", .{i}); std.debug.print("\n", .{}); }
+    };
+
+    const maxLen = std.sort.max(
+        usize, 
+        &[_]usize{base.items.len, next.items.len, check.items.len},
+        {}, std.sort.asc(usize)
+    ).?;
+
+    helper.head("index");
+    helper.enumerate(maxLen);
+    helper.head("base");
+    helper.body(base);
+    helper.head("next");
+    helper.body(next);
+    helper.head("check");
+    helper.body(check);
+}
 
 fn transTableDump(table: std.ArrayList(std.ArrayList(?usize))) void {
     for (table.items, 0..) |row, i| {
@@ -512,4 +662,11 @@ fn transTableDump(table: std.ArrayList(std.ArrayList(?usize))) void {
         std.debug.print("\n", .{});
     }
 }
+
+// fn nextState(state: usize, symbol: u8) usize {
+//     const index: usize = cDFA.base[state] + symbol;
+//     if (cDFA.check[index] == state) {
+//         return cDFA.next[index];
+//     } else return 0;
+// }
 
