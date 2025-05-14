@@ -177,7 +177,7 @@ pub fn main() !u8 {
                 std.log.err("\"{s}\": {!}", .{rule.regex, e});
                 return 1;
             };
-            // head.dump(0);
+            head.dump(0);
             try headList.append(head);
         }
 

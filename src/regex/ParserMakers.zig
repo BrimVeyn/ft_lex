@@ -103,7 +103,6 @@ pub fn getEscaped(self: *Parser) !Token {
             break;
         }
 
-
         if (eaten == 0 and self.currentEql(.{ .Char = 'x' })) {
             is_hexa = true; eaten += 1;
             continue;
@@ -164,7 +163,9 @@ pub fn makeEscape(self: *Parser) ParserError!*RegexNode {
     self.tokenizer.changeContext(.RegexExpCommon);
     _ = self.advance();
 
-    const node = makeNode(self, .{ .Char = char.Char });
+    var ec = std.StaticBitSet(256).initEmpty();
+    ec.set(char.Char);
+    const node = makeNode(self, .{ .CharClass = .{ .negate = false, .range = ec } });
 
     return node;
 }

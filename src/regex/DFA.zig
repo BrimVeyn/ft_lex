@@ -466,8 +466,8 @@ pub const DFA = struct {
     }
 
     const TestTransTable = [_][6]u8 {
-       [_]u8 { 0,  0,  0,  0,  0,  0, },
-       [_]u8 { 2,  3,  4,  5,  0,  0, },
+       [_]u8 { 0,  17,  19,  0,  0,  1, },
+       [_]u8 { 0,  0,  4,  5,  0,  0, },
        [_]u8 { 0,  0, 16, 17,  0,  0, },
        [_]u8 { 11,  0,  0,  0, 12,  0, },
        [_]u8 { 9,  0,  0,  0,  0,  0, },
@@ -494,44 +494,64 @@ pub const DFA = struct {
         //Keep track of the transition count to fill the yy_nxt array later
         var nTransition: usize = 0;
 
-        var tempTransTable = try std.ArrayList(std.ArrayList(?usize))
+        var realTransTable = try std.ArrayList(std.ArrayList(?usize))
             .initCapacity(self.alloc, self.minimized.data.items.len);
 
         for (self.minimized.data.items, 0..) |state, i| {
-            tempTransTable.appendAssumeCapacity(try std.ArrayList(?usize).initCapacity(self.alloc, self.yy_ec_highest + 1));
-            tempTransTable.items[i].expandToCapacity();
-            @memset(tempTransTable.items[i].items[0..], null);
+            realTransTable.appendAssumeCapacity(try std.ArrayList(?usize).initCapacity(self.alloc, self.yy_ec_highest + 1));
+            realTransTable.items[i].expandToCapacity();
+            @memset(realTransTable.items[i].items[0..], null);
 
             nTransition += state.signature.?.data.items.len;
             for (state.signature.?.data.items) |transition| {
-                tempTransTable.items[i].items[transition.symbol.ec] = transition.group_id;
+                realTransTable.items[i].items[transition.symbol.ec] = transition.group_id;
             }
         }
 
-        var base = try std.ArrayList(usize).initCapacity(self.alloc, TestTransTable.len);
-        base.expandToCapacity();
-        base.items[0] = 0;
+        //
+        // nTransition = 0;
+        // const testTransTable = blk: {
+        //     var ret = try std.ArrayList(std.ArrayList(?usize))
+        //         .initCapacity(self.alloc, TestTransTable.len);
+        //     for (TestTransTable, 0..) |row, i| {
+        //         ret.appendAssumeCapacity(try std.ArrayList(?usize).initCapacity(self.alloc, row.len));
+        //         ret.items[i].expandToCapacity();
+        //         @memset(ret.items[i].items[0..], null);
+        //         for (row, 0..) |t, j| { 
+        //             if (t != 0) { 
+        //                 ret.items[i].items[j] = t;
+        //                 nTransition += 1;
+        //             }
+        //         }
+        //     }
+        //     break: blk ret;
+        // };
 
-        nTransition = 0;
-        const transTable = blk: {
-            var ret = try std.ArrayList(std.ArrayList(?usize))
-                .initCapacity(self.alloc, TestTransTable.len);
-            for (TestTransTable, 0..) |row, i| {
-                ret.appendAssumeCapacity(try std.ArrayList(?usize).initCapacity(self.alloc, row.len));
-                ret.items[i].expandToCapacity();
-                @memset(ret.items[i].items[0..], null);
-                for (row, 0..) |t, j| { 
-                    if (t != 0) { 
-                        ret.items[i].items[j] = t;
-                        nTransition += 1;
-                    }
-                }
+        // var default = try std.ArrayList(usize).initCapacity(self.alloc, TestTransTable.len);
+        // default.expandToCapacity();
+
+        const transTableLen = realTransTable.items.len;
+        const transTable = realTransTable;
+
+        transTableDump(transTable);
+
+        var base = try std.ArrayList(usize).initCapacity(self.alloc, transTableLen);
+        var next = try std.ArrayList(usize).initCapacity(self.alloc, transTableLen);
+        var check = try std.ArrayList(usize).initCapacity(self.alloc, transTableLen);
+        base.expandToCapacity();
+
+        const padding = blk: {
+            var count:usize = 0;
+            for (transTable.items[0].items) |t| {
+                if (t != null) break;
+                try next.append(0);
+                try check.append(0);
+                count += 1;
             }
-            break: blk ret;
+            break: blk count;
         };
 
-
-        for (transTable.items[1..], 1..) |row, i| {
+        for (transTable.items[0..], 0..) |row, i| {
             var offset: usize = 0;
 
             const allNotNull: std.ArrayList(usize) = blk: {
@@ -583,29 +603,38 @@ pub const DFA = struct {
             }
         }
 
-        var next = try std.ArrayList(usize).initCapacity(self.alloc, TestTransTable.len);
-        var check = try std.ArrayList(usize).initCapacity(self.alloc, TestTransTable.len);
-
-        var globalOffset: usize = 0;
-        var collected: usize = 0;
-        while (collected != nTransition) {
+        var globalOffset = padding;
+        std.debug.print("nTransition: {d}\n", .{nTransition});
+        std.debug.print("base: {any}\n", .{base.items});
+        while (nTransition > 0) {
             var it: usize = 0;
+            std.debug.print("offset: {d}\n", .{globalOffset});
+            var caught: bool = false;
             while (it < transTable.items.len) {
                 const rowOffset = base.items[it];
                 const row = transTable.items[it];
+                std.debug.print("Row: {any}\n", .{row.items});
 
-                if (globalOffset < rowOffset) { //null
-                    it += 1;
-                } else if (globalOffset >= (row.items.len + rowOffset)) {
-                    it += 1;
-                } else if (row.items[globalOffset - rowOffset] == null) {
+                if (
+                    globalOffset < rowOffset 
+                    or globalOffset >= (row.items.len + rowOffset) 
+                    or row.items[globalOffset - rowOffset] == null
+                ) {
                     it += 1;
                 } else {
-                    collected += 1;
+                    nTransition -= 1;
                     try check.append(it);
                     try next.append(row.items[globalOffset - rowOffset].?);
+                    std.debug.print("Caught: {d}\n", .{row.items[globalOffset - rowOffset].?});
                     globalOffset += 1;
+                    caught = true;
                 }
+            }
+            if (!caught) {
+                std.debug.print("NOT FOUND\n", .{});
+                try next.append(0);
+                try check.append(0);
+                globalOffset += 1;
             }
         }
 
@@ -650,13 +679,24 @@ fn compressedTableDump(base: VecUsize, next: VecUsize, check: VecUsize) void {
 }
 
 fn transTableDump(table: std.ArrayList(std.ArrayList(?usize))) void {
+    const helper = struct {
+        fn head(str: []const u8) void { std.debug.print("{s:10}:", .{str}); }
+        fn body(t: VecUsize) void { for (t.items) |i| std.debug.print("{d:4}", .{i}); std.debug.print("\n", .{}); }
+        fn enumerate(min:usize, max:usize) void { for (min..max) |i| std.debug.print("{d:4}", .{i}); std.debug.print("\n", .{}); }
+    };
+
+    helper.head("state/ec");
+    helper.enumerate(0, table.items[0].items.len);
     for (table.items, 0..) |row, i| {
-        std.debug.print("{d:2}: ", .{i});
+        var buffer:[100]u8 = .{0} ** 100;
+        _ = std.fmt.bufPrint(&buffer, "{d:10}", .{i}) catch return ;
+        helper.head(buffer[0..]);
+
         for (row.items) |maybe_t| {
             if (maybe_t) |t| {
-                std.debug.print("{d:2} ", .{t});
+                std.debug.print("{d:4}", .{t});
             } else {
-                std.debug.print("{s}{d:2}{s} ", .{Red, 0, Reset});
+                std.debug.print("{s}{d:4}{s}", .{Red, 0, Reset});
             }
         }
         std.debug.print("\n", .{});
