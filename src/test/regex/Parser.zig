@@ -9,13 +9,21 @@ const INFINITY          = ParserModule.INFINITY;
 const Makers            = @import("../../regex/ParserMakers.zig");
 
 fn parseAll(alloc: std.mem.Allocator, input: []const u8) !struct {Parser, *RegexNode} {
-    var parser = try Parser.init(alloc, input);
+    var parser = try Parser.initWithSlice(alloc, input);
 
     const head = parser.parse() catch |e| {
         std.log.err("Parser: {!}", .{e});
         return e;
     };
     return .{parser, head};
+}
+
+fn makeEC(parser: *Parser, n: bool, str: []const u8) !*RegexNode {
+    var ret = std.StaticBitSet(256).initEmpty();
+    for (str) |c| {
+        ret.set(c);
+    }
+    return Makers.makeNode(parser, .{.CharClass = .{ .negate = n, .range = ret }});
 }
 
 fn makeChar(parser: *Parser, c: u8) !*RegexNode {
@@ -36,8 +44,8 @@ test "Simple concat test" {
 
     const expect = try Makers.makeNode(&parser, .{
         .Concat = .{
-            .left = try Makers.makeNode(&parser, .{ .Char = 'a' }),
-            .right = try Makers.makeNode(&parser, .{ .Char = 'b' }),
+            .left = try makeEC(&parser, false, "a"),
+            .right = try makeEC(&parser, false, "b"),
         }
     });
 
@@ -51,8 +59,8 @@ test "Concat simple" {
 
     const expect = try Makers.makeNode(&parser, .{
         .Concat = .{
-            .left = try makeChar(&parser, 'a'),
-            .right = try makeChar(&parser, 'b'),
+            .left = try makeEC(&parser, false, "a"),
+            .right = try makeEC(&parser, false, "b"),
         },
     });
 
@@ -67,7 +75,7 @@ test "Simple repetition *" {
         .Repetition = .{
             .min = 0,
             .max = INFINITY,
-            .left = try makeChar(&parser, 'a'),
+            .left = try makeEC(&parser, false, "a"),
         },
     });
 
@@ -80,7 +88,7 @@ test "Simple repetitions +, ? and {m, n}" {
         var parser, const head = try parseAll(std.testing.allocator, "a+");
         defer parser.deinit();
         const expect = try Makers.makeNode(&parser, .{
-            .Repetition = .{ .min = 1, .max = INFINITY, .left = try makeChar(&parser, 'a') },
+            .Repetition = .{ .min = 1, .max = INFINITY, .left = try makeEC(&parser, false, "a") },
         });
         try std.testing.expectEqualDeep(head, expect);
     }
@@ -90,7 +98,7 @@ test "Simple repetitions +, ? and {m, n}" {
         var parser, const head = try parseAll(std.testing.allocator, "a?");
         defer parser.deinit();
         const expect = try Makers.makeNode(&parser, .{
-            .Repetition = .{ .min = 0, .max = 1, .left = try makeChar(&parser, 'a') },
+            .Repetition = .{ .min = 0, .max = 1, .left = try makeEC(&parser, false, "a") },
         });
         try std.testing.expectEqualDeep(head, expect);
     }
@@ -100,7 +108,7 @@ test "Simple repetitions +, ? and {m, n}" {
         var parser, const head = try parseAll(std.testing.allocator, "a{1,10}");
         defer parser.deinit();
         const expect = try Makers.makeNode(&parser, .{
-            .Repetition = .{ .min = 1, .max = 10, .left = try makeChar(&parser, 'a') },
+            .Repetition = .{ .min = 1, .max = 10, .left = try makeEC(&parser, false, "a") },
         });
         try std.testing.expectEqualDeep(head, expect);
     }
@@ -110,7 +118,7 @@ test "Simple repetitions +, ? and {m, n}" {
         var parser, const head = try parseAll(std.testing.allocator, "a{2}");
         defer parser.deinit();
         const expect = try Makers.makeNode(&parser, .{
-            .Repetition = .{ .min = 2, .max = 2, .left = try makeChar(&parser, 'a') },
+            .Repetition = .{ .min = 2, .max = 2, .left = try makeEC(&parser, false, "a") },
         });
         try std.testing.expectEqualDeep(head, expect);
     }
@@ -120,7 +128,7 @@ test "Simple repetitions +, ? and {m, n}" {
         var parser, const head = try parseAll(std.testing.allocator, "a{2,}");
         defer parser.deinit();
         const expect = try Makers.makeNode(&parser, .{
-            .Repetition = .{ .min = 2, .max = INFINITY, .left = try makeChar(&parser, 'a') },
+            .Repetition = .{ .min = 2, .max = INFINITY, .left = try makeEC(&parser, false, "a") },
         });
         try std.testing.expectEqualDeep(head, expect);
     }
@@ -132,8 +140,8 @@ test "Alternation" {
 
     const expect = try Makers.makeNode(&parser, .{
         .Alternation = .{
-            .left = try makeChar(&parser, 'a'),
-            .right = try makeChar(&parser, 'b'),
+            .left = try makeEC(&parser, false, "a"),
+            .right = try makeEC(&parser, false, "b"),
         },
     });
 
@@ -147,8 +155,8 @@ test "Grouping and concatenation" {
     const group = try Makers.makeNode(&parser, .{
         .Group = try Makers.makeNode(&parser, .{
             .Concat = .{
-                .left = try makeChar(&parser, 'a'),
-                .right = try makeChar(&parser, 'b'),
+                .left = try makeEC(&parser, false, "a"),
+                .right = try makeEC(&parser, false, "b"),
             },
         }),
     });
@@ -156,7 +164,7 @@ test "Grouping and concatenation" {
     const expect = try Makers.makeNode(&parser, .{
         .Concat = .{
             .left = group,
-            .right = try makeChar(&parser, 'c'),
+            .right = try makeEC(&parser, false, "c"),
         },
     });
 
@@ -169,11 +177,11 @@ test "Anchors" {
 
     const abc = try Makers.makeNode(&parser, .{
         .Concat = .{
-            .left = try makeChar(&parser, 'a'),
+            .left = try makeEC(&parser, false, "a"),
             .right = try Makers.makeNode(&parser, .{
                 .Concat = .{
-                    .left = try makeChar(&parser, 'b'),
-                    .right = try makeChar(&parser, 'c'),
+                    .left = try makeEC(&parser, false, "b"),
+                    .right = try makeEC(&parser, false, "c"),
                 },
             }),
         },
@@ -215,14 +223,14 @@ test "Trailing context" {
         .TrailingContext = .{
             .left = try Makers.makeNode(&parser, .{
                 .Concat = .{
-                    .left = try makeChar(&parser, 'a'),
-                    .right = try makeChar(&parser, 'b'),
+                    .left = try makeEC(&parser, false, "a"),
+                    .right = try makeEC(&parser, false, "b"),
                 },
             }),
             .right = try Makers.makeNode(&parser, .{
                 .Concat = .{
-                    .left = try makeChar(&parser, 'c'),
-                    .right = try makeChar(&parser, 'd'),
+                    .left = try makeEC(&parser, false, "c"),
+                    .right = try makeEC(&parser, false, "d"),
                 },
             }),
         },
@@ -237,8 +245,8 @@ test "Start condition + concatenation" {
 
     const inner = try Makers.makeNode(&parser, .{
         .Concat = .{
-            .left = try makeChar(&parser, 'a'),
-            .right = try makeChar(&parser, 'b'),
+            .left = try makeEC(&parser, false, "a"),
+            .right = try makeEC(&parser, false, "b"),
         },
     });
 
@@ -257,14 +265,14 @@ test "Escape sequences: simple characters" {
 
     const expected = try Makers.makeNode(&parser, .{
         .Concat = .{
-            .left = try makeChar(&parser, '\n'),
+            .left = try makeEC(&parser, false, "\n"),
             .right = try Makers.makeNode(&parser, .{
                 .Concat = .{ 
-                    .left = try makeChar(&parser, '\r'),
+                    .left = try makeEC(&parser, false, "\r"),
                     .right = try Makers.makeNode(&parser, .{
                         .Concat = .{ 
-                            .left = try makeChar(&parser, '\t'),
-                            .right = try  makeChar(&parser, '\\'),
+                            .left = try makeEC(&parser, false, "\t"),
+                            .right = try  makeEC(&parser, false, "\\"),
                         }
                     })
                 }
@@ -281,8 +289,8 @@ test "Escape sequences: hex values" {
 
     const expected = try Makers.makeNode(&parser, .{
         .Concat = .{
-            .left = try makeChar(&parser, 0x41),
-            .right = try makeChar(&parser, 0x42),
+            .left = try makeEC(&parser, false, "\x41"),
+            .right = try makeEC(&parser, false, "\x42"),
         },
     });
 
@@ -295,8 +303,8 @@ test "Escape sequences: octal values" {
 
     const expected = try Makers.makeNode(&parser, .{
         .Concat = .{
-            .left = try makeChar(&parser, 0o101), // 'A'
-            .right = try makeChar(&parser, 0o102), // 'B'
+            .left = try makeEC(&parser, false, "\x41"),
+            .right = try makeEC(&parser, false, "\x42"),
         },
     });
 
@@ -349,7 +357,7 @@ test "Escape sequences: all known including hex, octal, and literals" {
         var parser, const head = try parseAll(std.testing.allocator, str);
         defer parser.deinit();
 
-        const expected = try makeChar(&parser, expected_char);
+        const expected = try makeEC(&parser, false, &[_]u8{expected_char});
         try std.testing.expectEqualDeep(head, expected);
     }
 }
@@ -382,7 +390,7 @@ test "Parser errors" {
     for (escapes) |pair| {
         const str = pair[0];
         const expected_error = pair[1];
-        var parser = try Parser.init(std.testing.allocator, str);
+        var parser = try Parser.initWithSlice(std.testing.allocator, str);
         defer parser.deinit();
 
         const real_error = parser.parse();
@@ -401,11 +409,11 @@ test "Quoting" {
             .left = try Makers.makeNode(&parser, .{
                 .Group = try Makers.makeNode(&parser, .{
                     .Concat = .{
-                        .left = try makeChar(&parser, 'a'),
+                        .left = try makeEC(&parser, false, "a"),
                         .right = try Makers.makeNode(&parser, .{
                             .Concat = .{
-                                .left = try makeChar(&parser, 'b'),
-                                .right = try makeChar(&parser, 'c'),
+                                .left = try makeEC(&parser, false, "b"),
+                                .right = try makeEC(&parser, false, "c"),
                             }
                         })
                     }

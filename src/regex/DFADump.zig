@@ -36,7 +36,9 @@ pub fn minimizedStringify(self: DFA, alloc: std.mem.Allocator) ![]u8 {
     var writer = buffer.writer();
     var cycler = ColorCycler{};
 
-    for (self.minimized.data.items, 0..) |state, sId| {
+    const minimized = self.minimized orelse return "";
+
+    for (minimized.data.items, 0..) |state, sId| {
         if (state.accept_id) |accept_id| {
             const fmt = "dm{d} [shape=\"doublecircle\", style=\"filled\", fillcolor=\"{s}\", label=\"d{0d} r{d}\"]\n";
             try writer.print(fmt, .{sId, cycler.getColor(accept_id), accept_id});

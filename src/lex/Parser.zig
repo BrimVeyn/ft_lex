@@ -17,6 +17,7 @@ const LexParserError = error {
     RecursiveDefinitionNotAllowed,
     NoSuchDefinition,
     InvalidDefinition,
+    NoRulesGiven,
 } || error { OutOfMemory };
 
 
@@ -62,6 +63,7 @@ fn logError(self: *LexParser, err: LexParserError) LexParserError {
         error.RecursiveDefinitionNotAllowed => std.log.err("{s}: recursive definition not allowed", .{self.tokenizer.getFileName()}),
         error.NoSuchDefinition => std.log.err("{s}: no such definition", .{self.tokenizer.getFileName()}),
         error.InvalidDefinition => std.log.err("{s}: invalid regex", .{self.tokenizer.getFileName()}),
+        error.NoRulesGiven => std.log.err("{s}: no rule given", .{self.tokenizer.getFileName()}),
         else => {},
     }
     return err;
@@ -252,6 +254,9 @@ fn parseRules(self: *LexParser) !void {
             .EOF, .EndOfSection => break: outer,
             else => {}
         }
+    }
+    if (self.rules.items.len == 0) {
+        return self.logError(error.NoRulesGiven);
     }
     //Expand {DEFINITION}
     self.expandRules() catch |e| return self.logError(e);

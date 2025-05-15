@@ -11,7 +11,7 @@ const Tokenizer         = TokenizerModule.Tokenizer;
 const Token             = TokenizerModule.Token;
 
 const ParserModule      = @import("regex/Parser.zig");
-const RegexParser            = ParserModule.Parser;
+const RegexParser       = ParserModule.Parser;
 const RegexNode         = ParserModule.RegexNode;
 
 const NFAModule         = @import("regex/NFA.zig");
@@ -142,7 +142,7 @@ const DebugAllocatorOptions: std.heap.DebugAllocatorConfig = .{
 
 pub fn main() !u8 {
     var gpa: std.heap.DebugAllocator(DebugAllocatorOptions) = .init;
-    // defer _ = gpa.deinit();
+    defer _ = gpa.deinit();
     const alloc = gpa.allocator();
 
     const args = try std.process.argsAlloc(alloc);
@@ -207,10 +207,13 @@ pub fn main() !u8 {
         try dfa.minimize();
         try dfa.compress();
 
-        std.debug.print("yy_ec: {d}", .{yy_ec});
+
+        std.debug.print("yy_ec: {d}\n", .{yy_ec});
 
         const outFile = try std.fs.cwd().createFile("test.graph", .{});
         Graph.dotFormat(lexParser, unifiedNfa, dfa, &yy_ec, outFile.writer());
+
+        std.log.info("Compressed eql: {}\n", .{ try dfa.compareTTToCTT() });
     }
     return 0;
 }

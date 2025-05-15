@@ -88,6 +88,7 @@ led_lookup: ?[Tokenizer.TokenCount]?led_handler_fn = null,
 bp_lookup: ?[Tokenizer.TokenCount]?BindingPower = null,
 //Used to handle nested grouping
 depth: usize = 0,
+quote: bool = false,
 hasSeenTrailingContext: bool = false,
 //Collects character classes
 classSet: std.AutoArrayHashMap(std.StaticBitSet(256), void),
@@ -184,8 +185,11 @@ pub fn parseExpr(self: *Parser, min_bp: BindingPower) ParserError!*RegexNode {
     while (self.current != .Eof) {
         const cur_bp = self.getBp();
 
-        if (self.depth > 0 and (self.currentEql(.RParen) or self.currentEql(.Quote)))
-            break;
+        if (
+            (self.depth > 0 and self.currentEql(.RParen))
+            or (self.quote == true and self.currentEql(.Quote))
+        ) 
+        { break; }
 
         if (@intFromEnum(cur_bp) < @intFromEnum(min_bp))
             break;

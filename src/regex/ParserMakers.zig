@@ -39,7 +39,7 @@ pub fn makeQuote(self: *Parser) ParserError!*RegexNode {
     self.tokenizer.changeContext(.QuoteExp);
     _ = self.advance();
 
-    self.depth += 1;
+    self.quote = true;
     const inner = try self.parseExpr(.None);
 
     self.tokenizer.changeContext(.RegexExpCommon);
@@ -47,8 +47,7 @@ pub fn makeQuote(self: *Parser) ParserError!*RegexNode {
         return error.UnbalancedQuotes;
     }
     _ = self.advance();
-
-    self.depth -= 1;
+    self.quote = false;
 
     return makeNode(self, .{
         .Group = inner,
@@ -326,6 +325,7 @@ pub fn makeBracketExpr(self: *Parser) ParserError!*RegexNode {
     //INFO: Restore Regexp Toknizer state
     self.tokenizer.changeContext(.RegexExpCommon);
     _ = self.advance();
+    // std.debug.print("Depth: {d}: quote ? {}\n", .{self.depth, self.quote});
 
     return makeNode(self, .{
         .CharClass = .{ .negate = negate, .range = range } },
