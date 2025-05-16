@@ -117,7 +117,7 @@ fn expandDefinitions(self: *LexParser) !void {
             if (curr == '\\') { it += 1; continue; }
 
             switch (curr) {
-                '"' => quote = if (brace == 0) quote else !quote,
+                '"' => quote = if (brace == 0) !quote else quote,
                 '[' => brace += if (!quote) 1 else 0,
                 ']' => brace -|= if (!quote) 1 else 0,
                 '{' => if (!quote and brace == 0) { register = true; sdef = it; },
@@ -171,18 +171,23 @@ fn expandRules(self: *LexParser) !void {
         var it: usize = 0;
         var sSub, var eSub = [_]usize {0, 0};
 
+        // std.debug.print("Rule: {s}\n", .{rule});
         while (it < rule.regex.len) : (it += 1) {
             const curr: u8 = rule.regex[it];
             if (curr == '\\') { it += 1; continue; }
+            // std.debug.print("char: {c}, quote: {}, brace: {d}\n", .{curr, quote, brace});
 
             switch (curr) {
-                '"' => quote = if (brace == 0) quote else !quote,
+                '"' => quote = if (brace == 0) !quote else quote,
                 '[' => brace += if (!quote) 1 else 0,
                 ']' => brace -|= if (!quote) 1 else 0,
                 '{' => if (!quote and brace == 0) { register = true; sSub = it; },
                 '}' => if (!quote and brace == 0) { 
-                    if (register == false) 
+                    if (register == false) {
+
+                        // std.debug.print("Rule: {s}\n", .{rule});
                         return error.InvalidDefinition;
+                    }
                     register = false; eSub = it;
 
                     if (!isValidName(rule.regex[sSub + 1..eSub])) 
@@ -260,7 +265,7 @@ fn parseRules(self: *LexParser) !void {
     }
     //Expand {DEFINITION}
     self.expandRules() catch |e| return self.logError(e);
-    for (self.rules.items) |item| std.debug.print("{}\n", .{item});
+    // for (self.rules.items) |item| std.debug.print("{}\n", .{item});
 }
 
 fn parseUserSubroutines(self: *LexParser) !void {

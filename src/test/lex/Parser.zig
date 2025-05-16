@@ -94,3 +94,51 @@ test "Email Style" {
 test "Mixed Keywords and Numbers" {
     try assertCompressionIsValid("src/test/lex/inputs/mixed_keywords_and_numbers.l");
 }
+
+test "Keywords and Identifier 2" {
+    try assertCompressionIsValid("src/test/lex/inputs/keywords_and_ids_2.l");
+}
+
+test "Numbers and floats" {
+    try assertCompressionIsValid("src/test/lex/inputs/numbers_and_floats.l");
+}
+
+test "String operatos" {
+    try assertCompressionIsValid("src/test/lex/inputs/string_operators.l");
+}
+
+test "Crazy regex" {
+    try assertCompressionIsValid("src/test/lex/inputs/crazy_regex.l");
+}
+
+test "Crazy regex 2" {
+    try assertCompressionIsValid("src/test/lex/inputs/crazy_regex_2.l");
+}
+
+test "Number and operator hell" {
+    try assertCompressionIsValid("src/test/lex/inputs/num_op_hell.l");
+}
+
+test "Literal heavy" {
+    try assertCompressionIsValid("src/test/lex/inputs/literal_heavy.l");
+}
+
+test "Json fragments" {
+    try assertCompressionIsValid("src/test/lex/inputs/json_fragments.l");
+}
+
+test "Rust" {
+    try assertCompressionIsValid("src/test/lex/inputs/rust.l");
+}
+
+test "C" {
+    try assertCompressionIsValid("src/test/lex/inputs/c.l");
+}
+
+test "Python" {
+    try assertCompressionIsValid("src/test/lex/inputs/python.l");
+}
+
+test "Mega lexer" {
+    try assertCompressionIsValid("src/test/lex/inputs/mega_lexer.l");
+}

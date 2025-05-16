@@ -114,7 +114,7 @@ pub fn init(alloc: std.mem.Allocator) !Parser {
 pub fn loadSlice(self: *Parser, slice: []u8) void {
     self.tokenizer = Tokenizer.init(slice, .RegexExpStart);
     self.current = self.tokenizer.next();
-    std.log.info("Token: {}", .{self.current});
+    // std.log.info("Token: {}", .{self.current});
 }
 
 pub fn deinit(self: *Parser) void {
@@ -126,7 +126,7 @@ pub fn deinit(self: *Parser) void {
 pub fn advance(self: *Parser) Token {
     const token = self.current;
     self.current = self.tokenizer.next();
-    std.log.info("Token: {}", .{self.current});
+    // std.log.info("Token: {}", .{self.current});
     return token;
 }
 

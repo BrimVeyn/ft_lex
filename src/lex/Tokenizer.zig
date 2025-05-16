@@ -136,7 +136,7 @@ pub const LexTokenizer = struct {
         return self.getC();
     }
 
-    fn peekC(self: *LexTokenizer) ?u8 {
+    fn peekC(self: LexTokenizer) ?u8 {
         return 
         if (self.pos.absolute < self.input.len) self.input[self.pos.absolute] 
             else null;
@@ -275,7 +275,7 @@ pub const LexTokenizer = struct {
     fn logError(self: LexTokenizer, err: LexTokenizerError) LexTokenizerError {
         switch (err) {
             error.UnrecognizedPercentDirective => std.log.err("{s}:{d}: unrecognized '%' directive", .{self.getFileName(), self.getLineNo()}),
-            error.BadCharacter => std.log.err("{s}:{d}: bad character: {c}", .{self.getFileName(), self.getLineNo(), self.input[self.pos.absolute]}),
+            error.BadCharacter => std.log.err("{s}:{d}: bad character: {c}", .{self.getFileName(), self.getLineNo(), self.peekC() orelse '.'}),
             error.UnexpectedEOF => std.log.err("{s}:{d}: premature EOF", .{self.getFileName(), self.getLineNo()}),
             error.IncompleteNameDefinition => std.log.err("{s}:{d}: incomplete name definition", .{self.getFileName(), self.getLineNo()}),
             error.BadNumber => std.log.err("{s}:{d}: bad number format", .{self.getFileName(), self.getLineNo()}),
@@ -478,18 +478,21 @@ pub const LexTokenizer = struct {
         const sRegex: usize = self.pos.absolute;
         while (true) {
             const curr = self.peekC() orelse break;
+            // std.debug.print("Curr: {c}, quote: {}, brace: {d}\n", .{curr, quote, brace});
             switch (curr) {
-                '"' => { if (brace == 0) quote = !quote; },
-                '[' => brace += 1,
-                ']' => brace -|= 1,
+                '"' => quote = if (brace == 0) !quote else quote,
+                '[' => brace += if (!quote) 1 else 0,
+                ']' => brace -|= if (!quote) 1 else 0,
                 '\\' => { 
                     _ = self.getC() orelse return error.BadCharacter; 
                     const nextC = self.getC() orelse return error.BadCharacter; 
                     if (nextC == '\n') { return error.BadCharacter; }
                     else continue;
                 },
+                ' ', '\t' => if (!quote and brace == 0) break,
                 else => {},
             }
+            // std.debug.print("Checking whitespaces\n", .{});
             if (
                 !quote and brace == 0 and 
                 mem.indexOfScalar(u8, &std.ascii.whitespace, curr) != null
@@ -503,7 +506,7 @@ pub const LexTokenizer = struct {
         const code = if (self.peekC()) |c| switch (c) {
             '{' => try self.getCBlockRule(),
             else => try self.getCLine(),
-        } else return error.BadCharacter;
+        } else try self.getCLine();
 
         self.eatWhitespacesAndNewline();
 

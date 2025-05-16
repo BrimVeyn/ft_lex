@@ -1,3 +1,4 @@
+//! This is the main file
 const std               = @import("std");
 const stdin             = std.io.getStdIn();
 const print             = std.debug.print;
@@ -173,11 +174,12 @@ pub fn main() !u8 {
 
         for (lexParser.rules.items) |rule| {
             regexParser.loadSlice(rule.regex);
+            // std.debug.print("Parsing regex: {s}", .{rule.regex});
             const head = regexParser.parse() catch |e| {
                 std.log.err("\"{s}\": {!}", .{rule.regex, e});
                 return 1;
             };
-            head.dump(0);
+            // head.dump(0);
             try headList.append(head);
         }
 
@@ -208,12 +210,12 @@ pub fn main() !u8 {
         try dfa.compress();
 
 
-        std.debug.print("yy_ec: {d}\n", .{yy_ec});
+        // std.debug.print("yy_ec: {d}\n", .{yy_ec});
 
-        const outFile = try std.fs.cwd().createFile("test.graph", .{});
-        Graph.dotFormat(lexParser, unifiedNfa, dfa, &yy_ec, outFile.writer());
+        // const outFile = try std.fs.cwd().createFile("test.graph", .{});
+        // Graph.dotFormat(lexParser, unifiedNfa, dfa, &yy_ec, outFile.writer());
 
-        std.log.info("Compressed eql: {}\n", .{ try dfa.compareTTToCTT() });
+        // std.log.info("Compressed eql: {}\n", .{ try dfa.compareTTToCTT() });
     }
     return 0;
 }

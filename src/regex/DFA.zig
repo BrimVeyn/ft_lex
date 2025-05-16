@@ -210,6 +210,7 @@ pub const DFA = struct {
     };
 
     alloc: std.mem.Allocator,
+    epsilon_cache: std.AutoHashMap(StateSet, StateSet) = undefined,
     data: DfaTable,
     minimized: ?Partition = null,
     accept_list: std.ArrayList(AcceptState),
@@ -278,7 +279,7 @@ pub const DFA = struct {
         return best;
     }
 
-    fn epsilon_closure(self: *DFA, states: StateSet) !StateSet {
+    inline fn epsilon_closure(self: *DFA, states: StateSet) !StateSet {
         var closure = try states.clone();
 
         var stack = std.ArrayList(*State).init(self.alloc);
@@ -294,11 +295,10 @@ pub const DFA = struct {
                 }
             }
         }
-
         return closure;
     }
 
-    fn move(self: *DFA, states: StateSet, symbol: u8) !StateSet {
+    inline fn move(self: *DFA, states: StateSet, symbol: u8) !StateSet {
         var moves = StateSet.init(self.alloc);
 
         for (states.keys()) |s| {
@@ -311,7 +311,7 @@ pub const DFA = struct {
         return moves;
     }
 
-    fn move_ec(self: *DFA, states: StateSet, ec: u8) !StateSet {
+    inline fn move_ec(self: *DFA, states: StateSet, ec: u8) !StateSet {
         var moves = StateSet.init(self.alloc);
 
         for (states.keys()) |s| {
@@ -340,46 +340,50 @@ pub const DFA = struct {
             .accept_id = self.getAcceptingRule(start_closure),
         });
 
+        self.epsilon_cache = std.AutoHashMap(StateSet, StateSet).init(self.alloc);
+        defer self.epsilon_cache.deinit();
+
         while (queue.pop()) |current_set| {
             // try printStateSet(current_set);
-            for (0..256) |s| {
-                const symbol: u8 = @intCast(s);
-                var gotos = try self.move(current_set, symbol);
-                defer gotos.deinit();
-
-                if (gotos.count() == 0) 
-                continue;
-                var closure = try self.epsilon_closure(gotos);
-
-                if (!self.data.contains(closure)) {
-                    try self.data.put(closure, .{
-                        .transitions = std.ArrayList(DFATransition).init(self.alloc),
-                        .accept_id = self.getAcceptingRule(closure),
-                    });
-                    try queue.append(closure);
-
-                    const maybe_value = self.data.getPtr(current_set);
-                    if (maybe_value) |value| {
-                        try value.transitions.append(.{ .symbol = .{ .char = symbol }, .to = closure });
-                    } else unreachable;
-                } else {
-                    const maybe_value = self.data.getPtr(current_set);
-                    const closure_ptr = self.data.getKeyPtr(closure);
-                    if (maybe_value) |value| {
-                        try value.transitions.append(.{ .symbol = .{ .char = symbol }, .to = closure_ptr.?.* });
-                    } else unreachable;
-                    closure.deinit();
-                }
-            }
+            // for (0..256) |s| {
+            //     const symbol: u8 = @intCast(s);
+            //     var gotos = try self.move(current_set, symbol);
+            //     defer gotos.deinit();
+            //
+            //     if (gotos.count() == 0) 
+            //     continue;
+            //     var closure = try self.epsilon_closure(gotos);
+            //
+            //     if (!self.data.contains(closure)) {
+            //         try self.data.put(closure, .{
+            //             .transitions = std.ArrayList(DFATransition).init(self.alloc),
+            //             .accept_id = self.getAcceptingRule(closure),
+            //         });
+            //         try queue.append(closure);
+            //
+            //         const maybe_value = self.data.getPtr(current_set);
+            //         if (maybe_value) |value| {
+            //             try value.transitions.append(.{ .symbol = .{ .char = symbol }, .to = closure });
+            //         } else unreachable;
+            //     } else {
+            //         const maybe_value = self.data.getPtr(current_set);
+            //         const closure_ptr = self.data.getKeyPtr(closure);
+            //         if (maybe_value) |value| {
+            //             try value.transitions.append(.{ .symbol = .{ .char = symbol }, .to = closure_ptr.?.* });
+            //         } else unreachable;
+            //         closure.deinit();
+            //     }
+            // }
             //NOTE: Begin at id 1 since 0 is reserved for \x00
             for (1..self.yy_ec_highest + 1) |class_id| {
                 const ec: u8 = @intCast(class_id);
                 var gotos = try self.move_ec(current_set, ec);
                 defer gotos.deinit();
 
-                if (gotos.count() == 0) 
-                continue;
-                var closure = try self.epsilon_closure(gotos);
+                if (gotos.count() == 0) continue;
+
+                const closure = self.epsilon_cache.get(gotos) orelse try self.epsilon_closure(gotos);
+                try self.epsilon_cache.put(gotos, closure);
 
                 if (!self.data.contains(closure)) {
                     try self.data.put(closure, .{
@@ -398,7 +402,7 @@ pub const DFA = struct {
                     if (maybe_value) |value| {
                         try value.transitions.append(.{.symbol = .{ .ec = ec }, .to = closure_ptr.?.* });
                     } else unreachable;
-                    closure.deinit();
+                    // closure.deinit();
                 }
             }
         }
@@ -512,7 +516,7 @@ pub const DFA = struct {
 
     pub fn compress(self: *DFA) !void {
         const minDFA = self.minimized orelse return error.MissingMinDFA;
-        try minDFA.dump(self.data);
+        // try minDFA.dump(self.data);
 
         //Keep track of the transition count to fill the yy_nxt array later
         var nTransition: usize = 0;
@@ -535,8 +539,6 @@ pub const DFA = struct {
 
         const transTableLen = realTransTable.items.len;
         var transTable = realTransTable;
-
-        transTableDump(transTable);
 
         var base =      try ArrayList(usize).initCapacity(self.alloc, transTableLen);
         var next =      try ArrayList(?usize).initCapacity(self.alloc, transTableLen);
@@ -562,8 +564,8 @@ pub const DFA = struct {
 
             for (0..transTableLen) |y| {
                 const it = transTableLen - 1 - y;
-                var reverse: bool = false;
                 for (0..it) |i_y| {
+                    var reverse: bool = false;
                     const append: bool = iblk: {
                         var dominant: ?u1 = null;
                         var jamRow: struct {bool, bool} = .{true, true};
@@ -575,8 +577,8 @@ pub const DFA = struct {
                             if (!aNull) jamRow[0] = false;
                             if (!bNull) jamRow[1] = false;
                             if (dominant == null) {
-                                if (aNull and !bNull) dominant = 0;
                                 if (!aNull and bNull) dominant = 1;
+                                if (aNull and !bNull) dominant = 0;
                             }
                             if (aNull and !bNull and dominant == 1) break: iblk false;
                             if (!aNull and bNull and dominant == 0) break: iblk false;
@@ -586,8 +588,9 @@ pub const DFA = struct {
                         break: iblk (oneEqual and !jamRow[0] and !jamRow[1]);
                     };
                     if (append) {
-                        const indexa = if (!reverse) i_y else it;
-                        const indexb = if (!reverse) it else i_y;
+                        const indexa, const indexb = if (reverse) .{it, i_y} else . {i_y, it};
+                        // std.debug.print("On analyzing row: {d} with reverse as {}\n", .{it, reverse});
+                        // std.debug.print("Append: {d} to {d}\n", .{indexa, indexb});
                         try cs.items[indexb].append(.{indexa, &transTable.items[indexa].items});
                     }
                 }
@@ -600,18 +603,18 @@ pub const DFA = struct {
         }
 
 
-        for (candidates.items, 0..) |cs, i| { 
-            std.log.info("c for {d} : {any}", .{i, cs.items});
-        }
+        // for (candidates.items, 0..) |cs, i| { 
+            // std.log.info("c for {d} : {any}", .{i, cs.items});
+        // }
 
-        for (0..10) |it| {
+        for (0..transTableLen) |it| {
             const c = candidates.items[it];
             const bestMatch: ?struct {usize, usize} = blk: {
                 var best: ?struct {usize, usize} = null;
                 for (c.items) |row| {
                     const score = iblk: {
                         var score: ?usize = null;
-                        std.debug.print("Row: {any} with: {any}\n", .{transTable.items[it].items, row[1].*});
+                        // std.debug.print("Row: {any} with: {any}\n", .{transTable.items[it].items, row[1].*});
                         for (row[1].*, 0..) |elem, x| {
                             if (elem != null and transTable.items[it].items[x] == elem) {
                                 score = if (score) |s| s + 1 else 1;
@@ -633,11 +636,12 @@ pub const DFA = struct {
                 }
             }
             default.items[it] = bestMatch.?[1];
-            std.debug.print("BestMatch for row: {d} -> {any}\n", .{it, bestMatch});
+            // std.debug.print("BestMatch for row: {d} -> {any}\n", .{it, bestMatch});
         }
 
-        std.debug.print("List of ommitables:\n {any}\n", .{ommitable.items});
-        transTableDump(transTable);
+        // std.debug.print("List of ommitables:\n {any}\n", .{ommitable.items});
+        // transTableDump(transTable);
+
 
         if (ommitable.items.len != 0) {
             var clone = try transTable.clone();
@@ -646,9 +650,9 @@ pub const DFA = struct {
             }
             for (ommitable.items) |c| {
                 clone.items[c[0]].items[c[1]] = null;
-                nTransition -= 1;
             }
             transTable = clone;
+            nTransition -= ommitable.items.len;
         }
         defer {
             if (ommitable.items.len != 0) {
@@ -657,14 +661,15 @@ pub const DFA = struct {
             }
         }
 
-        transTableDump(transTable);
+        // std.debug.print("\n\n", .{});
+        // transTableDump(transTable);
 
         const padding = blk: {
             var count:usize = 0;
             for (transTable.items[0].items) |t| {
                 if (t != null) break;
-                try next.append(null);
-                try check.append(null);
+                // try next.append(null);
+                // try check.append(null);
                 count += 1;
             }
             break: blk count;
@@ -679,15 +684,11 @@ pub const DFA = struct {
                 break: blk ret;
             };
             defer allNotNull.deinit();
+            // std.debug.print("Not null of: {d} -> {any}\n", .{i, allNotNull.items});
 
             //For all rows above the current, check that all not null values have only zeroes above them
             //otherwise, increase offset by one until its true
-            // std.debug.print("{s}Need to check for {d}..{d}{s}\n", .{
-            //     Red,
-            //     0,
-            //     i,
-            //     Reset,
-            // });
+            // std.debug.print("{s}Need to check for {d}..{d}{s}\n", .{ Red, 0, i, Reset, });
             outer: while (true) {
                 defer offset += 1;
 
@@ -723,16 +724,14 @@ pub const DFA = struct {
             }
         }
 
-        var globalOffset = padding;
-        // std.debug.print("nTransition: {d}\n", .{nTransition});
-        // std.debug.print("base: {any}\n", .{base.items});
-        while (nTransition > 0) {
+        // compressedTableDump(base, next, check, default);
+        var globalOffset = padding - padding;
+        while (nTransition != 0) {
             var it: usize = 0;
             var caught: bool = false;
             while (it < transTable.items.len) {
                 const rowOffset = base.items[it];
                 const row = transTable.items[it];
-                // std.debug.print("Row: {any}\n", .{row.items});
 
                 if (
                     globalOffset < rowOffset 
@@ -744,13 +743,11 @@ pub const DFA = struct {
                     nTransition -= 1;
                     try check.append(it);
                     try next.append(row.items[globalOffset - rowOffset].?);
-                    // std.debug.print("Caught: {d}\n", .{row.items[globalOffset - rowOffset].?});
                     globalOffset += 1;
                     caught = true;
                 }
             }
             if (!caught) {
-                // std.debug.print("NOT FOUND\n", .{});
                 try next.append(null);
                 try check.append(null);
                 globalOffset += 1;
@@ -767,9 +764,9 @@ pub const DFA = struct {
             }
         }
 
-        std.debug.print("\n\n\n", .{});
-        transTableDump(transTable);
-        compressedTableDump(base, next, check, default);
+        // std.debug.print("\n\n", .{});
+        // transTableDump(transTable);
+        // compressedTableDump(base, next, check, default);
 
         self.cTransTable = .{ 
             .check = try check.toOwnedSlice(),
