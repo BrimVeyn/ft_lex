@@ -201,12 +201,12 @@ pub fn printStateSet(self: StateSet) !void {
 
 pub const DFA = struct {
 
-    const TransitionTable = ArrayList(ArrayList(?usize));
+    const TransitionTable = ArrayList(ArrayList(i16));
     const CompressedTransitionTable = struct {
-        base: []usize,
-        check: []?usize,
-        next: []?usize,
-        default: []?usize,
+        base: []i16,
+        check: []i16,
+        next: []i16,
+        default: []i16,
     };
 
     alloc: std.mem.Allocator,
@@ -218,6 +218,7 @@ pub const DFA = struct {
     cTransTable: ?CompressedTransitionTable = null,
     nfa_start: *State,
     yy_ec_highest: u8,
+    yy_accept: ?[]i16 = null,
 
     pub const DfaTable = std.ArrayHashMap(StateSet, StateSetData, StateSetCtx, true);
     pub const AcceptState = struct {
@@ -245,6 +246,7 @@ pub const DFA = struct {
         defer {
             self.data.deinit();
             if (self.minimized) |*m| m.deinit();
+            if (self.yy_accept) |a| self.alloc.free(a);
         }
 
         while (dfa_it.next()) |entry| {
@@ -340,8 +342,8 @@ pub const DFA = struct {
             .accept_id = self.getAcceptingRule(start_closure),
         });
 
-        self.epsilon_cache = std.AutoHashMap(StateSet, StateSet).init(self.alloc);
-        defer self.epsilon_cache.deinit();
+        // self.epsilon_cache = std.AutoHashMap(StateSet, StateSet).init(self.alloc);
+        // defer self.epsilon_cache.deinit();
 
         while (queue.pop()) |current_set| {
             // try printStateSet(current_set);
@@ -382,8 +384,10 @@ pub const DFA = struct {
 
                 if (gotos.count() == 0) continue;
 
-                const closure = self.epsilon_cache.get(gotos) orelse try self.epsilon_closure(gotos);
-                try self.epsilon_cache.put(gotos, closure);
+                var closure = try self.epsilon_closure(gotos);
+
+                // const closure = self.epsilon_cache.get(gotos) orelse try self.epsilon_closure(gotos);
+                // try self.epsilon_cache.put(gotos, closure);
 
                 if (!self.data.contains(closure)) {
                     try self.data.put(closure, .{
@@ -402,7 +406,7 @@ pub const DFA = struct {
                     if (maybe_value) |value| {
                         try value.transitions.append(.{.symbol = .{ .ec = ec }, .to = closure_ptr.?.* });
                     } else unreachable;
-                    // closure.deinit();
+                    closure.deinit();
                 }
             }
         }
@@ -489,6 +493,22 @@ pub const DFA = struct {
         //Reposition d0 at index 0, so the minimized dfa starts with the group that contains d0
         repositionD0(self.data, &P);
         self.minimized = P;
+        self.yy_accept = try self.getAcceptTable();
+    }
+
+    fn getAcceptTable(self: DFA) ![]i16 {
+        if (self.minimized) |m| {
+            var ret = try ArrayList(i16).initCapacity(self.alloc, m.data.items.len);
+            defer ret.deinit();
+
+            ret.expandToCapacity();
+            @memset(ret.items[0..], 0);
+
+            for (m.data.items, ret.items) |s, *a| {
+                if (s.accept_id) |id| a.* = @intCast(id + 1);
+            }
+            return ret.toOwnedSlice();
+        } else @panic("MinDFA not built !");
     }
 
     const TestTransTable = [_][6]u8 {
@@ -521,17 +541,17 @@ pub const DFA = struct {
         //Keep track of the transition count to fill the yy_nxt array later
         var nTransition: usize = 0;
 
-        var realTransTable = try std.ArrayList(std.ArrayList(?usize))
+        var realTransTable = try std.ArrayList(std.ArrayList(i16))
             .initCapacity(self.alloc, minDFA.data.items.len);
 
         for (minDFA.data.items, 0..) |state, i| {
-            realTransTable.appendAssumeCapacity(try std.ArrayList(?usize).initCapacity(self.alloc, self.yy_ec_highest + 1));
+            realTransTable.appendAssumeCapacity(try std.ArrayList(i16).initCapacity(self.alloc, self.yy_ec_highest + 1));
             realTransTable.items[i].expandToCapacity();
-            @memset(realTransTable.items[i].items[0..], null);
+            @memset(realTransTable.items[i].items[0..], -1);
 
             nTransition += state.signature.?.data.items.len;
             for (state.signature.?.data.items) |transition| {
-                realTransTable.items[i].items[transition.symbol.ec] = transition.group_id;
+                realTransTable.items[i].items[transition.symbol.ec] = @intCast(transition.group_id);
             }
         }
 
@@ -540,10 +560,10 @@ pub const DFA = struct {
         const transTableLen = realTransTable.items.len;
         var transTable = realTransTable;
 
-        var base =      try ArrayList(usize).initCapacity(self.alloc, transTableLen);
-        var next =      try ArrayList(?usize).initCapacity(self.alloc, transTableLen);
-        var check =     try ArrayList(?usize).initCapacity(self.alloc, transTableLen);
-        var default =   try ArrayList(?usize).initCapacity(self.alloc, transTableLen);
+        var base    =   try ArrayList(i16).initCapacity(self.alloc, transTableLen);
+        var next    =   try ArrayList(i16).initCapacity(self.alloc, transTableLen);
+        var check   =   try ArrayList(i16).initCapacity(self.alloc, transTableLen);
+        var default =   try ArrayList(i16).initCapacity(self.alloc, transTableLen);
         defer {
             base.deinit();
             next.deinit();
@@ -552,15 +572,15 @@ pub const DFA = struct {
         }
         base.expandToCapacity();
         default.expandToCapacity();
-        @memset(default.items[0..], null);
+        @memset(default.items[0..], -1);
 
 
         var ommitable = ArrayList(struct {usize, usize}).init(self.alloc);
         defer ommitable.deinit();
 
-        const candidates: ArrayList(ArrayList(struct {usize, *[]?usize})) = outer: {
-            var cs = try ArrayList(ArrayList(struct{usize, *[]?usize})).initCapacity(self.alloc, transTableLen);
-            for (0..transTableLen) |_| cs.appendAssumeCapacity(ArrayList(struct{usize, *[]?usize}).init(self.alloc));
+        const candidates: ArrayList(ArrayList(struct {usize, *[]i16})) = outer: {
+            var cs = try ArrayList(ArrayList(struct{usize, *[]i16})).initCapacity(self.alloc, transTableLen);
+            for (0..transTableLen) |_| cs.appendAssumeCapacity(ArrayList(struct{usize, *[]i16}).init(self.alloc));
 
             for (0..transTableLen) |y| {
                 const it = transTableLen - 1 - y;
@@ -572,17 +592,17 @@ pub const DFA = struct {
                         var oneEqual: bool = false;
                         for (transTable.items[it].items, transTable.items[i_y].items, 0..) |a, b, i| {
                             _ = i;
-                            const aNull = (a == null);
-                            const bNull = (b == null);
-                            if (!aNull) jamRow[0] = false;
-                            if (!bNull) jamRow[1] = false;
+                            const aJam = (a == -1);
+                            const bJam = (b == -1);
+                            if (!aJam) jamRow[0] = false;
+                            if (!bJam) jamRow[1] = false;
                             if (dominant == null) {
-                                if (!aNull and bNull) dominant = 1;
-                                if (aNull and !bNull) dominant = 0;
+                                if (!aJam and bJam) dominant = 1;
+                                if (aJam and !bJam) dominant = 0;
                             }
-                            if (aNull and !bNull and dominant == 1) break: iblk false;
-                            if (!aNull and bNull and dominant == 0) break: iblk false;
-                            if (!aNull and !bNull and a == b) oneEqual = true;
+                            if (aJam and !bJam and dominant == 1) break: iblk false;
+                            if (!aJam and bJam and dominant == 0) break: iblk false;
+                            if (!aJam and !bJam and a == b) oneEqual = true;
                         }
                         if (dominant == 0) reverse = true;
                         break: iblk (oneEqual and !jamRow[0] and !jamRow[1]);
@@ -609,21 +629,21 @@ pub const DFA = struct {
 
         for (0..transTableLen) |it| {
             const c = candidates.items[it];
-            const bestMatch: ?struct {usize, usize} = blk: {
-                var best: ?struct {usize, usize} = null;
+            const bestMatch: ?struct {usize, i16} = blk: {
+                var best: ?struct {usize, i16} = null;
                 for (c.items) |row| {
                     const score = iblk: {
                         var score: ?usize = null;
                         // std.debug.print("Row: {any} with: {any}\n", .{transTable.items[it].items, row[1].*});
                         for (row[1].*, 0..) |elem, x| {
-                            if (elem != null and transTable.items[it].items[x] == elem) {
+                            if (elem != -1 and transTable.items[it].items[x] == elem) {
                                 score = if (score) |s| s + 1 else 1;
                             }
                         }
                         break: iblk score;
                     };
                     if (score == null) continue;
-                    if (best == null or score.? > best.?[0]) best = .{score.?, row[0]};
+                    if (best == null or score.? > best.?[0]) best = .{score.?, @intCast(row[0])};
                 }
                 break: blk if (best) |b| b
                     else null;
@@ -631,7 +651,7 @@ pub const DFA = struct {
             if (bestMatch == null) continue;
 
             for (transTable.items[it].items, 0..) |elem, x| {
-                if (elem != null and elem == transTable.items[bestMatch.?[1]].items[x]) {
+                if (elem != -1 and elem == transTable.items[@intCast(bestMatch.?[1])].items[x]) {
                     try ommitable.append(.{it, x});
                 }
             }
@@ -649,7 +669,7 @@ pub const DFA = struct {
                 row.* = try row.clone();
             }
             for (ommitable.items) |c| {
-                clone.items[c[0]].items[c[1]] = null;
+                clone.items[c[0]].items[c[1]] = -1;
             }
             transTable = clone;
             nTransition -= ommitable.items.len;
@@ -667,9 +687,7 @@ pub const DFA = struct {
         const padding = blk: {
             var count:usize = 0;
             for (transTable.items[0].items) |t| {
-                if (t != null) break;
-                // try next.append(null);
-                // try check.append(null);
+                if (t != -1) break;
                 count += 1;
             }
             break: blk count;
@@ -680,7 +698,7 @@ pub const DFA = struct {
 
             const allNotNull: std.ArrayList(usize) = blk: {
                 var ret = std.ArrayList(usize).init(self.alloc);
-                for (row.items, 0..) |t, j| { if (t != null) try ret.append(j); }
+                for (row.items, 0..) |t, j| { if (t != -1) try ret.append(j); }
                 break: blk ret;
             };
             defer allNotNull.deinit();
@@ -693,7 +711,7 @@ pub const DFA = struct {
                 defer offset += 1;
 
                 for (transTable.items[0..i], 0..) |aRow, indexLookup|  {
-                    const aRowOffset = base.items[indexLookup];
+                    const aRowOffset: usize = @intCast(base.items[indexLookup]);
                     // std.debug.print("{s}Arow[{d}], Offset: {d}{s}\n", .{
                     //     Green,
                     //     indexLookup,
@@ -703,23 +721,18 @@ pub const DFA = struct {
 
                     for (allNotNull.items) |rowIndex| {
                         const realIndex = rowIndex + offset;
-                        // std.debug.print("Off: {d}, Checking: {d}\n", .{offset, row.items[rowIndex].?});
-                        // std.debug.print("RealIndex: {d}\n", .{realIndex});
-                        if (realIndex < aRowOffset) {
-                            // std.debug.print("pitfall 1\n", .{});
-                            continue;
-                        } else if (realIndex >= (aRow.items.len + aRowOffset)) {
-                            // std.debug.print("pitfall 2\n", .{});
-                            continue;
-                        } else if (aRow.items[realIndex - aRowOffset] == null) {
-                            // std.debug.print("pitfall 3\n", .{});
+                        if (
+                            realIndex < aRowOffset or
+                            realIndex >= (aRow.items.len + aRowOffset) or
+                            aRow.items[realIndex - aRowOffset] == -1
+                        ) {
                             continue;
                         } else {
                             continue :outer;
                         }
                     }
                 }
-                base.items[i] = offset;
+                base.items[i] = @intCast(offset);
                 break: outer;
             }
         }
@@ -730,43 +743,43 @@ pub const DFA = struct {
             var it: usize = 0;
             var caught: bool = false;
             while (it < transTable.items.len) {
-                const rowOffset = base.items[it];
+                const rowOffset: usize = @intCast(base.items[it]);
                 const row = transTable.items[it];
 
                 if (
                     globalOffset < rowOffset 
                     or globalOffset >= (row.items.len + rowOffset) 
-                    or row.items[globalOffset - rowOffset] == null
+                    or row.items[globalOffset - rowOffset] == -1
                 ) {
                     it += 1;
                 } else {
                     nTransition -= 1;
-                    try check.append(it);
-                    try next.append(row.items[globalOffset - rowOffset].?);
+                    try check.append(@intCast(it));
+                    try next.append(row.items[globalOffset - rowOffset]);
                     globalOffset += 1;
                     caught = true;
                 }
             }
             if (!caught) {
-                try next.append(null);
-                try check.append(null);
+                try next.append(-1);
+                try check.append(-1);
                 globalOffset += 1;
             }
         }
 
 
-        const maxOffset = std.mem.max(usize, base.items[0..]);
+        const maxOffset: usize = @intCast(std.mem.max(i16, base.items[0..]));
         if ((maxOffset + self.yy_ec_highest) >= next.items.len) {
             const diff = (maxOffset + self.yy_ec_highest) - next.items.len + 1;
             for (0..diff) |_| {
-                try next.append(null);
-                try check.append(null);
+                try next.append(-1);
+                try check.append(-1);
             }
         }
 
-        // std.debug.print("\n\n", .{});
-        // transTableDump(transTable);
-        // compressedTableDump(base, next, check, default);
+        transTableDump(transTable);
+        std.debug.print("\n", .{});
+        compressedTableDump(base, next, check, default);
 
         self.cTransTable = .{ 
             .check = try check.toOwnedSlice(),
@@ -780,12 +793,12 @@ pub const DFA = struct {
         ctt: CompressedTransitionTable,
         state: usize,
         symbol: u8
-    ) ?usize {
+    ) i16 {
         var s = state;
         while (true) {
-            if (ctt.check[ctt.base[s] + symbol] == s)
-                return ctt.next[ctt.base[s] + symbol];
-            s = ctt.default[s] orelse return null;
+            if (ctt.check[@as(usize, @intCast(ctt.base[s])) + symbol] == s)
+                return ctt.next[@as(usize, @intCast(ctt.base[s])) + symbol];
+            s = if (ctt.default[s] == -1) return -1 else @intCast(ctt.default[s]);
         }
     }
 
@@ -818,24 +831,12 @@ const Red           = "\x1b[31m"; // Red for Anchors
 const White         = "\x1b[97m"; // White for label text
 const Reset         = "\x1b[0m";  // Reset color
 
-const VecUsize = std.ArrayList(usize);
-const VecMUsize = std.ArrayList(?usize);
+const Veci16 = std.ArrayList(i16);
 
-fn compressedTableDump(base: VecUsize, next: VecMUsize, check: VecMUsize, default: VecMUsize) void {
+fn compressedTableDump(base: Veci16, next: Veci16, check: Veci16, default: Veci16) void {
     const helper = struct {
         fn head(str: []const u8) void { std.debug.print("{s:10}:", .{str}); }
-        fn body(table: VecUsize) void { for (table.items) |i| std.debug.print("{d:4}", .{i}); std.debug.print("\n", .{}); }
-        fn bodyM(table: VecMUsize) void { 
-            for (table.items) |i| {
-                if (i) |it| {
-                    std.debug.print("{d:4}", .{it});
-                } else {
-                    std.debug.print("{s}{d:4}{s}", .{Red, 0, Reset});
-                }
-            }
-            std.debug.print("\n", .{});
-        }
-
+        fn body(table: Veci16) void { for (table.items) |i| std.debug.print("{d:4}", .{i}); std.debug.print("\n", .{}); }
         fn enumerate(max: usize) void { for (0..max) |i| std.debug.print("{d:4}", .{i}); std.debug.print("\n", .{}); }
     };
 
@@ -850,17 +851,17 @@ fn compressedTableDump(base: VecUsize, next: VecMUsize, check: VecMUsize, defaul
     helper.head("base");
     helper.body(base);
     helper.head("next");
-    helper.bodyM(next);
+    helper.body(next);
     helper.head("check");
-    helper.bodyM(check);
+    helper.body(check);
     helper.head("default");
-    helper.bodyM(default);
+    helper.body(default);
 }
 
-fn transTableDump(table: std.ArrayList(std.ArrayList(?usize))) void {
+fn transTableDump(table: std.ArrayList(std.ArrayList(i16))) void {
     const helper = struct {
         fn head(str: []const u8) void { std.debug.print("{s:10}:", .{str}); }
-        fn body(t: VecUsize) void { for (t.items) |i| std.debug.print("{d:4}", .{i}); std.debug.print("\n", .{}); }
+        fn body(t: Veci16) void { for (t.items) |i| std.debug.print("{d:4}", .{i}); std.debug.print("\n", .{}); }
         fn enumerate(min:usize, max:usize) void { for (min..max) |i| std.debug.print("{d:4}", .{i}); std.debug.print("\n", .{}); }
     };
 
@@ -871,11 +872,11 @@ fn transTableDump(table: std.ArrayList(std.ArrayList(?usize))) void {
         _ = std.fmt.bufPrint(&buffer, "{d:10}", .{i}) catch return ;
         helper.head(buffer[0..]);
 
-        for (row.items) |maybe_t| {
-            if (maybe_t) |t| {
+        for (row.items) |t| {
+            if (t != -1) {
                 std.debug.print("{d:4}", .{t});
             } else {
-                std.debug.print("{s}{d:4}{s}", .{Red, 0, Reset});
+                std.debug.print("{s}{d:4}{s}", .{Red, -1, Reset});
             }
         }
         std.debug.print("\n", .{});

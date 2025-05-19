@@ -74,9 +74,9 @@ pub const NFABuilder = struct {
     depth: usize = 0,
     //Parser is need to allocate more RegexNodes when its needed
     parser: *ParserModule.Parser,
-    yy_ec: *[256]u8,
+    yy_ec: *const [256]u8,
 
-    pub fn init(alloc: std.mem.Allocator, parser: *ParserModule.Parser, yy_ec: *[256]u8) !NFABuilder {
+    pub fn init(alloc: std.mem.Allocator, parser: *ParserModule.Parser, yy_ec: *const [256]u8) !NFABuilder {
         return .{
             .state_list = try std.ArrayListUnmanaged(*State).initCapacity(alloc, 10),
             .alloc = alloc,

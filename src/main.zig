@@ -1,4 +1,3 @@
-//! This is the main file
 const std               = @import("std");
 const stdin             = std.io.getStdIn();
 const print             = std.debug.print;
@@ -25,6 +24,8 @@ const Graph             = @import("regex/Graph.zig");
 const EC                = @import("regex/EquivalenceClasses.zig");
 const LexParser         = @import("lex/Parser.zig");
 
+const Printer           = @import("lex/Printer.zig");
+
 comptime {
     _ = @import("test/regex/Tokenizer.zig");
     _ = @import("test/regex/Parser.zig");
@@ -32,75 +33,9 @@ comptime {
     _ = @import("test/lex/Parser.zig");
 }
 
-pub fn interactiveMode(alloc: std.mem.Allocator) !void {
-
-    var stdinReader = stdin.reader();
-    var buf: [BUF_SIZE:0]u8 = .{0} ** BUF_SIZE;
-
-    print("Enter any regex to see its representation: \n", .{});
-    while (true) {
-        @memset(buf[0..], 0);
-        _ = stdinReader.readUntilDelimiterOrEof(&buf, '\n') catch |e| {
-            log.err("BUF_SIZE: {d} exceeded: {!}", .{BUF_SIZE, e});
-        };
-
-        if (std.mem.indexOfSentinel(u8, 0, buf[0..]) == 0) {
-            break;
-        }
-
-        const regex = std.mem.trimRight(u8, buf[0..], "\n\x00");
-
-        //Init parser
-        var parser = try RegexParser.initWithSlice(alloc, regex);
-        defer parser.deinit();
-
-        //Parser expr
-        const head = parser.parse() catch |e| {
-            std.log.err("Parser: {!}", .{e});
-            continue;
-        };
-
-        //Debug print
-        // head.dump(0);
-        // for (parser.classSet.keys(), 0..) |k, i| {
-        //     std.debug.print("set[{d}]: {}\n", .{i, k});
-        // }
-
-        const yy_ec_highest = try EC.buildEquivalenceTable(alloc, parser.classSet, &yy_ec);
-
-        //Init nfa builder
-        var nfaBuilder = try NFAModule.NFABuilder.init(alloc, &parser, &yy_ec);
-        defer nfaBuilder.deinit();
-
-        //Build nfa
-        const nfa = nfaBuilder.astToNfa(head) catch |e| {
-            std.log.err("NFA: {!}", .{e});
-            continue;
-        };
-        // std.debug.print("{s}", .{try nfa.stringify(alloc)});
-
-        var accept_list = std.ArrayList(DFA.AcceptState).init(alloc);
-        defer accept_list.deinit();
-        try accept_list.append(.{ .state = nfa.accept, .priority = 0 });
-
-        // Init dfa builder
-        var dfa = DFA.init(alloc, nfa, accept_list, yy_ec_highest);
-        defer dfa.deinit();
-
-        //Build dfa from nfa
-        try dfa.subset_construction();
-
-        // std.debug.print("{s}", .{try dfa.stringify(alloc)});
-
-        // Graph.dotFormat(regex, nfa, dfa, &yy_ec);
-    }
-}
-
-
 const   BUF_SIZE: usize = 4096;
-var     yy_ec: [256]u8  = .{0} ** 256;
 
-const LexOptions = struct {
+pub const LexOptions = struct {
     t: bool = false,
     n: bool = false,
     v: bool = false,
@@ -153,11 +88,9 @@ pub fn main() !u8 {
         print("Usage: ft_lex [-t] [-n|-v] [file...]\n", .{});
         return 1;
     };
-    _ = options;
-
     //We've consumed all options and there's no file
     if (args.len == arg_it) {
-        try interactiveMode(alloc);
+        @panic("Not yet implemtented");
     } else {
         var lexParser = try LexParser.init(alloc, args[arg_it]);
         defer lexParser.deinit();
@@ -183,9 +116,9 @@ pub fn main() !u8 {
             try headList.append(head);
         }
 
-        const yy_ec_highest = try EC.buildEquivalenceTable(alloc, regexParser.classSet, &yy_ec);
+        const ec = try EC.buildEquivalenceTable(alloc, regexParser.classSet);
 
-        var nfaBuilder = try NFAModule.NFABuilder.init(alloc, &regexParser, &yy_ec);
+        var nfaBuilder = try NFAModule.NFABuilder.init(alloc, &regexParser, &ec.yy_ec);
         defer nfaBuilder.deinit();
 
         var nfaList = std.ArrayList(NFA).init(alloc);
@@ -202,20 +135,21 @@ pub fn main() !u8 {
         const unifiedNfa, const acceptList = try nfaBuilder.merge(nfaList.items);
         defer acceptList.deinit();
 
-        var dfa = DFA.init(alloc, unifiedNfa, acceptList, yy_ec_highest);
+        var dfa = DFA.init(alloc, unifiedNfa, acceptList, ec.maxEc);
         defer dfa.deinit();
 
         try dfa.subset_construction();
         try dfa.minimize();
         try dfa.compress();
 
-
         // std.debug.print("yy_ec: {d}\n", .{yy_ec});
 
-        // const outFile = try std.fs.cwd().createFile("test.graph", .{});
-        // Graph.dotFormat(lexParser, unifiedNfa, dfa, &yy_ec, outFile.writer());
+        const outFile = try std.fs.cwd().createFile("test.graph", .{});
+        Graph.dotFormat(lexParser, unifiedNfa, dfa, &ec.yy_ec, outFile.writer());
 
-        // std.log.info("Compressed eql: {}\n", .{ try dfa.compareTTToCTT() });
+        std.log.info("Compressed eql: {}\n", .{ try dfa.compareTTToCTT() });
+        try Printer.print(ec, dfa, lexParser, options);
+
     }
     return 0;
 }

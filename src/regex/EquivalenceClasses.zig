@@ -1,11 +1,15 @@
 const std = @import("std");
 
+const EC = @This();
+
+yy_ec: [256]u8 = .{0} ** 256,
+maxEc: u8 = 0,
+
 pub fn buildEquivalenceTable(
     alloc: std.mem.Allocator,
     sets: std.AutoArrayHashMap(std.StaticBitSet(256), void),
-    yy_ec: *[256]u8)
-!u8 {
-
+) !EC {
+    var ret = EC{};
     var signatures = std.AutoArrayHashMap(std.StaticBitSet(256), u8).init(alloc);
     defer signatures.deinit();
 
@@ -25,9 +29,10 @@ pub fn buildEquivalenceTable(
         }
 
         const class_id = signatures.get(signature) orelse return error.UnexpectedClass;
-        yy_ec[ch] = class_id;
+        ret.yy_ec[ch] = class_id;
     }
     //NOTE: yy_ec[0] aka \x00 is reserved with class_id 0 to signal eof
-    yy_ec[0x00] = 0;
-    return next_id - 1;
+    ret.yy_ec[0x00] = 0;
+    ret.maxEc = next_id - 1;
+    return ret;
 }

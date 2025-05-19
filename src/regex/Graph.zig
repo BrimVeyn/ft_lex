@@ -49,7 +49,7 @@ const format:[]const u8 =
 
 fn stringifyClassSet(
     alloc: std.mem.Allocator,
-    yy_ec: *[256]u8,
+    yy_ec: *const [256]u8,
 ) ![]u8 {
     var buffer = std.ArrayList(u8).init(alloc);
     defer buffer.deinit();
@@ -146,7 +146,7 @@ pub fn dotFormat(
     lexParser: LexParser,
     nfa: NFA,
     dfa: DFA,
-    yy_ec: *[256]u8,
+    yy_ec: *const [256]u8,
     output: anytype,
 ) void {
     const nfa_str = nfa.stringify(std.heap.page_allocator) catch return;
