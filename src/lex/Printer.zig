@@ -54,6 +54,11 @@ pub fn printActions(lParser: LexParser, writer: std.fs.File.Writer) !void {
     for (lParser.rules.items, 0..) |rule, i| {
         _ = try writer.print(ruleHead, .{i + 1});
         _ = try writer.write(rule.code.code);
+
+        //Do not insert break statement as its a fallthrough rule
+        if (std.mem.eql(u8, "|", rule.code.code))
+            continue;
+
         _ = try writer.write(ruleTail);
     }
     _ = try writer.write(actionsTail);
