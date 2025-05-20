@@ -22,6 +22,43 @@ pub fn printTable(comptime T: type, writer: std.fs.File.Writer, table: []T, head
     _ = try writer.write("\n};\n\n");
 }
 
+
+pub const actionsHead =
+\\void yy_action(int accept_id) {
+\\  switch (accept_id) {
+\\
+;
+
+pub const actionsTail =
+\\      default:
+\\          fprintf(stderr, "Unknown action id: %d\n", accept_id);
+\\          break;
+\\      }
+\\}
+\\
+;
+
+pub const ruleHead =
+\\      case {d}:
+\\
+;
+
+pub const ruleTail =
+\\
+\\          break;
+\\
+;
+
+pub fn printActions(lParser: LexParser, writer: std.fs.File.Writer) !void {
+    _ = try writer.write(actionsHead);
+    for (lParser.rules.items, 0..) |rule, i| {
+        _ = try writer.print(ruleHead, .{i + 1});
+        _ = try writer.write(rule.code.code);
+        _ = try writer.write(ruleTail);
+    }
+    _ = try writer.write(actionsTail);
+}
+
 pub fn print(ec: EC, dfa: DFA, lexParser: LexParser, opts: LexOptions) !void {
     var file, const close = if (opts.t) .{ std.io.getStdOut(), false } else .{ try std.fs.cwd().createFile("ft_lex.yy.c", .{}), true };
     defer if (close) file.close();
@@ -36,6 +73,8 @@ pub fn print(ec: EC, dfa: DFA, lexParser: LexParser, opts: LexOptions) !void {
     try printTable(i16, writer, dfa.cTransTable.?.default, "default");
     try printTable(i16, writer, dfa.cTransTable.?.next, "next");
     try printTable(i16, writer, dfa.cTransTable.?.check, "check");
+
+    try printActions(lexParser, writer);
 
     if (lexParser.userSubroutines) |_| {
         std.debug.print("Yes !\n", .{});

@@ -1,6 +1,25 @@
+%{
+#include <stdio.h>
+%}
+
+%x STRING
+
 %%
 
-abc printf("salut !\n");
+\"	{
+	printf("Start of string\n");
+	BEGIN(STRING);
+}
 
-def	printf("hey !\n");
+<STRING>[^"]+ 
+<STRING>\"	{
+	printf("End of string\n");
+	BEGIN(INITIAL);
+}
 
+%%
+
+int main() {
+    yylex();
+    return 0;
+}
