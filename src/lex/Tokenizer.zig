@@ -8,6 +8,11 @@ const Rule              = RulesModule.Rule;
 
 
 pub const LexTokenizer = struct {
+
+    pub const SCKind = enum {
+        Inclusive,
+        Exclusive,
+    };
     
     pub const LexTokenizerError = error {
         UnrecognizedPercentDirective,
@@ -43,7 +48,7 @@ pub const LexTokenizer = struct {
         rule: Rule,
         userSuboutines: []u8,
         startCondition: struct {
-            type: enum { Inclusive, Exclusive },
+            type: LexTokenizer.SCKind,
             name: std.ArrayList([]u8),
 
             pub fn jsonStringify(self: @This(), jws: anytype) !void {
@@ -492,7 +497,6 @@ pub const LexTokenizer = struct {
                 ' ', '\t' => if (!quote and brace == 0) break,
                 else => {},
             }
-            // std.debug.print("Checking whitespaces\n", .{});
             if (
                 !quote and brace == 0 and 
                 mem.indexOfScalar(u8, &std.ascii.whitespace, curr) != null

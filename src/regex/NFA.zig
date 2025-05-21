@@ -3,10 +3,11 @@ const ParserModule  = @import("Parser.zig");
 const ParserMakers  = @import("ParserMakers.zig");
 const NFADump       = @import("NFADump.zig");
 const DFAModule     = @import("DFA.zig");
+const Rules         = @import("../lex/Rules.zig");
+const LexParser     = @import("../lex/Parser.zig");
 const DFA           = DFAModule.DFA;
+
 pub const StateId   = usize;
-
-
 pub const NFA_LIMIT = 32_000;
 pub const RECURSION_LIMIT = 10_000;
 
@@ -65,6 +66,59 @@ pub const NFA = struct {
     start_condition: ?[64:0]u8 = null,
 
     pub const stringify = NFADump.stringify;
+
+    pub fn clone(self: NFA, alloc: std.mem.Allocator, next_id: *StateId) !NFA {
+        var state_map = std.AutoHashMap(*State, *State).init(alloc);
+        defer state_map.deinit();
+
+        const cloned_start = try cloneState(self.start, alloc, &state_map, next_id);
+        const cloned_accept = try cloneState(self.accept, alloc, &state_map, next_id);
+
+        var cloned_lookahead: ?*NFA = null;
+        if (self.lookAhead) |la| {
+            const la_clone = try alloc.create(NFA);
+            la_clone.* = try la.clone(alloc, next_id);
+            cloned_lookahead = la_clone;
+        }
+
+        return NFA{
+            .start = cloned_start,
+            .accept = cloned_accept,
+            .lookAhead = cloned_lookahead,
+            .matchStart = self.matchStart,
+            .matchEnd = self.matchEnd,
+            // .start_condition = self.start_condition,
+        };
+    }
+
+    fn cloneState(
+        original: *State,
+        alloc: std.mem.Allocator,
+        map: *std.AutoHashMap(*State, *State),
+        next_id: *StateId,
+    ) !*State {
+        if (map.get(original)) |existing| {
+            return existing;
+        }
+
+        const cloned = try alloc.create(State);
+        cloned.* = State{
+            .id = next_id.*,
+            .transitions = std.ArrayList(Transition).init(alloc),
+        };
+        next_id.* += 1;
+
+        try map.put(original, cloned);
+
+        for (original.transitions.items) |t| {
+            const cloned_to = try cloneState(t.to, alloc, map, next_id);
+            try cloned.transitions.append(.{
+                .symbol = t.symbol,
+                .to = cloned_to,
+            });
+        }
+        return cloned;
+    }
 };
 
 pub const NFABuilder = struct {
@@ -318,12 +372,40 @@ pub const NFABuilder = struct {
         };
     }
 
-    pub fn merge(self: *NFABuilder, NFAs: []NFA) !struct { NFA, std.ArrayList(DFA.AcceptState) } {
+    pub fn merge(self: *NFABuilder, NFAs: []NFA, lexParser: LexParser) !struct { NFA, std.ArrayList(DFA.AcceptState) } {
         var acceptList = std.ArrayList(DFA.AcceptState).init(self.alloc);
         errdefer acceptList.deinit();
 
         const start = try self.makeState(0);
         self.next_id += 1;
+        _ = lexParser;
+
+        //First iteration to fill rules that are active in INITIAL sc
+        // for (NFAs, lexParser.rules.items, 0..) |inner, rule, it| {
+        //     if (rule.sc.items.len == 0) {
+        //         try start.transitions.append(.{ .symbol = .{ .epsilon = {} }, .to = inner.start});
+        //         try acceptList.append(.{ .state = inner.accept, .priority = it });
+        //     }
+        // }
+        //
+        // for (lexParser.definitions.startConditions.data.items) |sc| {
+        //     for (NFAs, lexParser.rules.items, 0..) |inner, rule, it| {
+        //         const found = blk: {
+        //             if (sc.type == .Inclusive and rule.sc.items.len == 0) break: blk true;
+        //             for (rule.sc.items) |c| if (std.mem.eql(u8, c.name, sc.name)) break: blk true;
+        //             break :blk false;
+        //         };
+        //         if (!found) continue;
+        //
+        //         const copy = try inner.clone(self.alloc, &self.next_id);
+        //         try start.transitions.append(.{ .symbol = .{ .epsilon = {} }, .to = copy.start});
+        //         try acceptList.append(.{ .state = copy.accept, .priority = it });
+        //     }
+        // }
+
+        for (acceptList.items) |as| {
+            std.debug.print("as: {}\n", .{as});
+        }
 
         for (NFAs, 0..) |inner, it| {
             try start.transitions.append(.{ .symbol = .{ .epsilon = {} }, .to = inner.start});

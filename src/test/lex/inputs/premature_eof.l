@@ -1,25 +1,23 @@
-%{
-#include <stdio.h>
-%}
-
-%x STRING
+%s INCLUSIVE
+%x EXCLUSIVE
 
 %%
 
-\"	{
-	printf("Start of string\n");
-	BEGIN(STRING);
+a {
+	printf("Begin inclusive cond\n");
+	BEGIN(INCLUSIVE);
 }
 
-<STRING>[^"]+ 
-<STRING>\"	{
-	printf("End of string\n");
+b {
+	printf("Begin exclusive cond\n");
+	BEGIN(EXCLUSIVE);
+}
+
+<INCLUSIVE>"exit"   { 
+	printf("OUT OF INCLUSIVE");
 	BEGIN(INITIAL);
 }
-
-%%
-
-int main() {
-    yylex();
-    return 0;
+<EXCLUSIVE>"exit"   {
+	printf("OUT OF EXCLUSIVE");
+	BEGIN(INITIAL);
 }

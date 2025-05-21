@@ -132,7 +132,7 @@ pub fn main() !u8 {
             try nfaList.append(nfa);
         }
 
-        const unifiedNfa, const acceptList = try nfaBuilder.merge(nfaList.items);
+        const unifiedNfa, const acceptList = try nfaBuilder.merge(nfaList.items, lexParser);
         defer acceptList.deinit();
 
         var dfa = DFA.init(alloc, unifiedNfa, acceptList, ec.maxEc);

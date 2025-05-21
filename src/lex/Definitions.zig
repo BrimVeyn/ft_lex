@@ -1,4 +1,5 @@
 const std = @import("std");
+const LexTokenizer = @import("Tokenizer.zig").LexTokenizer;
 
 pub const Definitions = struct {
 
@@ -13,19 +14,21 @@ pub const Definitions = struct {
     };
 
     pub const StartConditions = struct {
-        inclusive: std.ArrayListUnmanaged([]u8),
-        exclusive: std.ArrayListUnmanaged([]u8),
+        pub const SCType = struct {
+            name: []u8,
+            type: LexTokenizer.SCKind,
+        };
+
+        data: std.ArrayListUnmanaged(SCType),
 
         pub fn init(alloc: std.mem.Allocator) !StartConditions {
             return .{
-                .inclusive = try std.ArrayListUnmanaged([]u8).initCapacity(alloc, 5),
-                .exclusive = try std.ArrayListUnmanaged([]u8).initCapacity(alloc, 5),
+                .data = try std.ArrayListUnmanaged(SCType).initCapacity(alloc, 5),
             };
         }
 
         pub fn deinit(self: *StartConditions, alloc: std.mem.Allocator) void {
-            self.exclusive.deinit(alloc);
-            self.inclusive.deinit(alloc);
+            self.data.deinit(alloc);
         }
     };
 
@@ -70,14 +73,11 @@ pub const Definitions = struct {
         try jws.objectField("YYTextType");
         try jws.print("{s}", .{@tagName(self.yytextType)});
 
-        try jws.objectField("Inclusive conditions");
+        try jws.objectField("Start conditions");
         try jws.beginArray();
-        for (self.startConditions.inclusive.items) |cond| { try jws.print("{s}", .{cond}); }
-        try jws.endArray();
-
-        try jws.objectField("Exclusive conditions");
-        try jws.beginArray();
-        for (self.startConditions.exclusive.items) |cond| { try jws.print("{s}", .{cond}); }
+        for (self.startConditions.data.items) |cond| {
+            try jws.print("{{ name: {s}, type: {s} }}", .{cond.name, @tagName(cond.type)}); 
+        }
         try jws.endArray();
 
         try jws.objectField("Definitions");

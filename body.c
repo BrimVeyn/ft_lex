@@ -25,16 +25,35 @@ static void yy_unread_char(void) {
 	if (yy_buf_pos > 0) yy_buf_pos--;
 }
 
-enum {
-	INITIAL = 0,
-	COMMENT = 1,
-};
-
 static int yy_start = INITIAL;
+
+#define BEGIN(condition) (yy_start) = condition
+
+
+int yy_is_rule_active(int accept_id) {
+	if (accept_id == 0) return 0;
+
+	/*printf("Checking accept_id: %d sc: %d\n", accept_id, yy_start);*/
+	/*printf("Value: %d\n", (yy_sc[accept_id] >> yy_start));*/
+	return ((yy_sc[accept_id] >> yy_start) & 1);
+}
 
 // --- Action dispatcher (to be generated per .l file) ---
 void yy_action(int accept_id) {
-
+	switch (accept_id) {
+		case 1:
+			{
+				printf("rule 1 matched\n");
+				BEGIN(STRING);
+			}
+			break;
+		case 2:
+			printf("matched !\n");
+			break;
+		default:
+			fprintf(stderr, "Unknown action id: %d\n", accept_id);
+			break;
+	}
 }
 
 int yy_next_state(int s, int ec) {
@@ -81,7 +100,7 @@ int yylex(void) {
 			state = next_state;
 			cur_pos = yy_buf_pos;
 
-			if (yy_accept[state] > 0) {
+			if (yy_is_rule_active(yy_accept[state]) > 0) {
 				last_accepting_state = state;
 				last_accepting_pos = cur_pos;
 			}
@@ -126,3 +145,4 @@ int main(void) {
 	yyout = stdout;
 	yylex();
 }
+

@@ -49,7 +49,7 @@ pub fn init(alloc: std.mem.Allocator, fileName: []u8) !LexParser {
 pub fn deinit(self: *LexParser) void {
     self.alloc.free(self.tokenizer.input);
     self.definitions.deinit(self.alloc);
-    for (self.rules.items) |r| self.alloc.free(r.regex);
+    for (self.rules.items) |r| r.deinit(self.alloc);
     self.rules.deinit(self.alloc);
 }
 
@@ -221,9 +221,8 @@ fn parseDefinitions(self: *LexParser) !void {
             }),
             .startCondition => |start| { 
                 defer start.name.deinit();
-                switch (start.type) {
-                    .Inclusive => try self.definitions.startConditions.inclusive.appendSlice(self.alloc, start.name.items[0..]),
-                    .Exclusive => try self.definitions.startConditions.exclusive.appendSlice(self.alloc, start.name.items[0..]),
+                for (start.name.items) |n| {
+                    try self.definitions.startConditions.data.append(self.alloc, .{.type = start.type, .name = n});
                 }
             },
             .param => |p| switch (p) {
@@ -241,7 +240,25 @@ fn parseDefinitions(self: *LexParser) !void {
         }
     }
     self.expandDefinitions() catch |e| return self.logError(e);
-    // std.debug.print("{}\n", .{self.definitions});
+    std.debug.print("{}\n", .{self.definitions});
+}
+
+fn extractStartConditions(self: *LexParser) !void {
+    for (self.rules.items) |*r| {
+        if (r.regex[0] != '<') 
+            continue;
+
+        for (self.definitions.startConditions.data.items, 1..) |sc, it| {
+            if (std.mem.startsWith(u8, r.regex[1..], sc.name)) {
+                std.debug.print("Matched with: {s}\n", .{sc.name});
+                _ = it;
+                try r.sc.append(sc);
+                for (r.sc.items) |some| {
+                    std.debug.print("{}\n", .{some});
+                }
+            }
+        }
+    }
 }
 
 fn parseRules(self: *LexParser) !void {
@@ -252,10 +269,7 @@ fn parseRules(self: *LexParser) !void {
         const token = try self.advance();
         // std.debug.print("Token: {}\n", .{token});
         switch (token) {
-            .rule => |r| try self.rules.append(self.alloc, .{
-                .regex = try self.alloc.dupe(u8, r.regex),
-                .code = r.code,
-            }),
+            .rule => |r| try self.rules.append(self.alloc, Rule.init(self.alloc, try self.alloc.dupe(u8, r.regex), r.code)),
             .EOF, .EndOfSection => break: outer,
             else => {}
         }
@@ -265,7 +279,9 @@ fn parseRules(self: *LexParser) !void {
     }
     //Expand {DEFINITION}
     self.expandRules() catch |e| return self.logError(e);
-    // for (self.rules.items) |item| std.debug.print("{}\n", .{item});
+    self.extractStartConditions() catch |e| return self.logError(e);
+
+    for (self.rules.items) |item| std.debug.print("{}\n", .{item});
 }
 
 fn parseUserSubroutines(self: *LexParser) !void {

@@ -10,7 +10,7 @@ const DFA           = DFAModule.DFA;
 
 const MAX_ITEM_PER_ROW: usize = 10;
 
-pub fn printTable(comptime T: type, writer: std.fs.File.Writer, table: []T, head: []const u8) !void {
+fn printTable(comptime T: type, writer: std.fs.File.Writer, table: []T, head: []const u8) !void {
     try writer.print("static const int16_t yy_{s}[{d}] = {{", .{head, table.len});
 
     for (table, 0..) |item, it| {
@@ -23,13 +23,13 @@ pub fn printTable(comptime T: type, writer: std.fs.File.Writer, table: []T, head
 }
 
 
-pub const actionsHead =
+const actionsHead =
 \\void yy_action(int accept_id) {
 \\  switch (accept_id) {
 \\
 ;
 
-pub const actionsTail =
+const actionsTail =
 \\      default:
 \\          fprintf(stderr, "Unknown action id: %d\n", accept_id);
 \\          break;
@@ -38,18 +38,18 @@ pub const actionsTail =
 \\
 ;
 
-pub const ruleHead =
+const ruleHead =
 \\      case {d}:
 \\
 ;
 
-pub const ruleTail =
+const ruleTail =
 \\
 \\          break;
 \\
 ;
 
-pub fn printActions(lParser: LexParser, writer: std.fs.File.Writer) !void {
+fn printActions(lParser: LexParser, writer: std.fs.File.Writer) !void {
     _ = try writer.write(actionsHead);
     for (lParser.rules.items, 0..) |rule, i| {
         _ = try writer.print(ruleHead, .{i + 1});
@@ -63,6 +63,28 @@ pub fn printActions(lParser: LexParser, writer: std.fs.File.Writer) !void {
     }
     _ = try writer.write(actionsTail);
 }
+
+// fn printSCTable(lParser: LexParser, writer: std.fs.File.Writer) !void {
+//     try writer.print("static const int16_t yy_sc[{d}] = {{", .{lParser.rules.items.len + 1});
+//     for (lParser.rules.items, 0..) |r, it| {
+//         if (it % MAX_ITEM_PER_ROW == 0) {
+//             _ = try writer.write("\n");
+//         }
+//         if (it == 0) _ = try writer.write("0b0, ");
+//         try writer.print("0b{b}, ", .{r.sc.mask});
+//     }
+//     _ = try writer.write("\n};\n\n");
+// }
+
+fn printSCEnum(lParser: LexParser, writer: std.fs.File.Writer) !void {
+    _ = try writer.write("enum {\n");
+    _ = try writer.write("\tINITIAL,\n");
+    for (lParser.definitions.startConditions.data.items) |sc| {
+        _ = try writer.print("\t{s},\n", .{sc.name});
+    }
+    _ = try writer.write("};\n\n");
+}
+
 
 pub fn print(ec: EC, dfa: DFA, lexParser: LexParser, opts: LexOptions) !void {
     var file, const close = if (opts.t) .{ std.io.getStdOut(), false } else .{ try std.fs.cwd().createFile("ft_lex.yy.c", .{}), true };
@@ -78,6 +100,9 @@ pub fn print(ec: EC, dfa: DFA, lexParser: LexParser, opts: LexOptions) !void {
     try printTable(i16, writer, dfa.cTransTable.?.default, "default");
     try printTable(i16, writer, dfa.cTransTable.?.next, "next");
     try printTable(i16, writer, dfa.cTransTable.?.check, "check");
+    // try printSCTable(lexParser, writer);
+
+    try printSCEnum(lexParser, writer);
 
     try printActions(lexParser, writer);
 
