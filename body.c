@@ -30,14 +30,6 @@ static int yy_start = INITIAL;
 #define BEGIN(condition) (yy_start) = condition
 
 
-int yy_is_rule_active(int accept_id) {
-	if (accept_id == 0) return 0;
-
-	/*printf("Checking accept_id: %d sc: %d\n", accept_id, yy_start);*/
-	/*printf("Value: %d\n", (yy_sc[accept_id] >> yy_start));*/
-	return ((yy_sc[accept_id] >> yy_start) & 1);
-}
-
 // --- Action dispatcher (to be generated per .l file) ---
 void yy_action(int accept_id) {
 	switch (accept_id) {
@@ -69,15 +61,13 @@ int yy_next_state(int s, int ec) {
 int yylex(void) {
 	int i = 0;
 	while (i++ < 1000) {
-		int state = 0;
+		int state = yy_start;
 		int last_accepting_state = -1;
 		int last_accepting_pos = -1;
 
 		int start_pos = yy_buf_pos;
 		int cur_pos = start_pos;
 		int last_read_c = -1;
-
-		state = 0;
 
 		while (1) {
 			last_read_c = yy_read_char();
@@ -100,7 +90,7 @@ int yylex(void) {
 			state = next_state;
 			cur_pos = yy_buf_pos;
 
-			if (yy_is_rule_active(yy_accept[state]) > 0) {
+			if (yy_accept[state] > 0) {
 				last_accepting_state = state;
 				last_accepting_pos = cur_pos;
 			}

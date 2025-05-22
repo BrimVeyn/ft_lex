@@ -64,29 +64,25 @@ fn printActions(lParser: LexParser, writer: std.fs.File.Writer) !void {
     _ = try writer.write(actionsTail);
 }
 
-// fn printSCTable(lParser: LexParser, writer: std.fs.File.Writer) !void {
-//     try writer.print("static const int16_t yy_sc[{d}] = {{", .{lParser.rules.items.len + 1});
-//     for (lParser.rules.items, 0..) |r, it| {
-//         if (it % MAX_ITEM_PER_ROW == 0) {
-//             _ = try writer.write("\n");
-//         }
-//         if (it == 0) _ = try writer.write("0b0, ");
-//         try writer.print("0b{b}, ", .{r.sc.mask});
-//     }
-//     _ = try writer.write("\n};\n\n");
-// }
-
-fn printSCEnum(lParser: LexParser, writer: std.fs.File.Writer) !void {
+fn printSCEnum(lParser: LexParser, offsets: ArrayListUnmanaged(usize), writer: std.fs.File.Writer) !void {
     _ = try writer.write("enum {\n");
-    _ = try writer.write("\tINITIAL,\n");
-    for (lParser.definitions.startConditions.data.items) |sc| {
-        _ = try writer.print("\t{s},\n", .{sc.name});
+    _ = try writer.write("\tINITIAL = 0,\n");
+    for (lParser.definitions.startConditions.data.items, offsets.items[1..]) |sc, offset| {
+        _ = try writer.print("\t{s} = {d},\n", .{sc.name, offset});
     }
     _ = try writer.write("};\n\n");
 }
 
+const ArrayListUnmanaged = std.ArrayListUnmanaged;
 
-pub fn print(ec: EC, dfa: DFA, lexParser: LexParser, opts: LexOptions) !void {
+pub fn print(
+    ec: EC,
+    dfa: DFA,
+    offsets: ArrayListUnmanaged(usize),
+    lexParser: LexParser,
+    opts: LexOptions
+) !void {
+
     var file, const close = if (opts.t) .{ std.io.getStdOut(), false } else .{ try std.fs.cwd().createFile("ft_lex.yy.c", .{}), true };
     defer if (close) file.close();
 
@@ -102,7 +98,7 @@ pub fn print(ec: EC, dfa: DFA, lexParser: LexParser, opts: LexOptions) !void {
     try printTable(i16, writer, dfa.cTransTable.?.check, "check");
     // try printSCTable(lexParser, writer);
 
-    try printSCEnum(lexParser, writer);
+    try printSCEnum(lexParser, offsets, writer);
 
     try printActions(lexParser, writer);
 

@@ -6,6 +6,7 @@ const DFAModule     = @import("DFA.zig");
 const Rules         = @import("../lex/Rules.zig");
 const LexParser     = @import("../lex/Parser.zig");
 const DFA           = DFAModule.DFA;
+const ArrayList     = std.ArrayList;
 
 pub const StateId   = usize;
 pub const NFA_LIMIT = 32_000;
@@ -155,6 +156,10 @@ pub const NFABuilder = struct {
         };
         try self.state_list.append(self.alloc, node);
         return node;
+    }
+
+    pub fn reset(self: *NFABuilder) void {
+        self.depth = 0;
     }
 
     pub fn astToNfa(self: *NFABuilder, node: *ParserModule.RegexNode) NFAError!NFA {
@@ -372,49 +377,86 @@ pub const NFABuilder = struct {
         };
     }
 
-    pub fn merge(self: *NFABuilder, NFAs: []NFA, lexParser: LexParser) !struct { NFA, std.ArrayList(DFA.AcceptState) } {
-        var acceptList = std.ArrayList(DFA.AcceptState).init(self.alloc);
+    pub fn merge(
+        self: *NFABuilder,
+        NFAs: []NFA, lexParser: LexParser
+    ) 
+    !struct { 
+        ArrayList(NFA),
+        ArrayList([]DFA.AcceptState),
+        ArrayList(NFA),
+        ArrayList([]DFA.AcceptState),
+    } {
+
+        var merged_NFAs = ArrayList(NFA).init(self.alloc);
+        errdefer merged_NFAs.deinit();
+
+        var aLists = ArrayList([]DFA.AcceptState).init(self.alloc);
+        errdefer aLists.deinit();
+
+        var bol_NFAs = ArrayList(NFA).init(self.alloc);
+        errdefer bol_NFAs.deinit();
+
+        var bol_aLists = ArrayList([]DFA.AcceptState).init(self.alloc);
+        errdefer bol_aLists.deinit();
+
+        var acceptList = ArrayList(DFA.AcceptState).init(self.alloc);
         errdefer acceptList.deinit();
 
-        const start = try self.makeState(0);
+        var bol_acceptList = ArrayList(DFA.AcceptState).init(self.alloc);
+        errdefer bol_acceptList.deinit();
+
         self.next_id += 1;
-        _ = lexParser;
-
-        //First iteration to fill rules that are active in INITIAL sc
-        // for (NFAs, lexParser.rules.items, 0..) |inner, rule, it| {
-        //     if (rule.sc.items.len == 0) {
-        //         try start.transitions.append(.{ .symbol = .{ .epsilon = {} }, .to = inner.start});
-        //         try acceptList.append(.{ .state = inner.accept, .priority = it });
-        //     }
-        // }
-        //
-        // for (lexParser.definitions.startConditions.data.items) |sc| {
-        //     for (NFAs, lexParser.rules.items, 0..) |inner, rule, it| {
-        //         const found = blk: {
-        //             if (sc.type == .Inclusive and rule.sc.items.len == 0) break: blk true;
-        //             for (rule.sc.items) |c| if (std.mem.eql(u8, c.name, sc.name)) break: blk true;
-        //             break :blk false;
-        //         };
-        //         if (!found) continue;
-        //
-        //         const copy = try inner.clone(self.alloc, &self.next_id);
-        //         try start.transitions.append(.{ .symbol = .{ .epsilon = {} }, .to = copy.start});
-        //         try acceptList.append(.{ .state = copy.accept, .priority = it });
-        //     }
-        // }
-
-        for (acceptList.items) |as| {
-            std.debug.print("as: {}\n", .{as});
+        var start = try self.makeState(0);
+        var bol_start = try self.makeState(0);
+        // First iteration to fill rules that are active in INITIAL sc
+        for (NFAs, lexParser.rules.items, 0..) |inner, rule, it| {
+            if (rule.sc.items.len == 0) {
+                if (inner.matchStart == false) {
+                    try start.transitions.append(.{ .symbol = .{ .epsilon = {} }, .to = inner.start});
+                    try acceptList.append(.{ .state = inner.accept, .priority = it });
+                } else {
+                    try bol_start.transitions.append(.{ .symbol = .{ .epsilon = {} }, .to = inner.start});
+                    try bol_acceptList.append(.{ .state = inner.accept, .priority = it });
+                }
+            }
         }
+        try merged_NFAs.append(.{ .start = start, .accept = NFAs[0].accept });
+        try aLists.append(try acceptList.toOwnedSlice());
+        try bol_NFAs.append(.{ .start = start, .accept = NFAs[0].accept });
+        try bol_aLists.append(try bol_acceptList.toOwnedSlice());
 
-        for (NFAs, 0..) |inner, it| {
-            try start.transitions.append(.{ .symbol = .{ .epsilon = {} }, .to = inner.start});
-            try acceptList.append(.{ .state = inner.accept, .priority = it });
+        for (lexParser.definitions.startConditions.data.items) |sc| {
+            start = try self.makeState(0);
+            bol_start = try self.makeState(0);
+            for (NFAs, lexParser.rules.items, 0..) |inner, rule, it| {
+                const found = blk: {
+                    if (inner.matchStart == true) break: blk false;
+                    if (sc.type == .Inclusive and rule.sc.items.len == 0) break: blk true;
+                    for (rule.sc.items) |c| if (std.mem.eql(u8, c.name, sc.name)) break: blk true;
+                    break :blk false;
+                };
+                if (!found) continue;
+
+                if (inner.matchStart == false) {
+                    try start.transitions.append(.{ .symbol = .{ .epsilon = {} }, .to = inner.start});
+                    try acceptList.append(.{ .state = inner.accept, .priority = it });
+                } else {
+                    try bol_start.transitions.append(.{ .symbol = .{ .epsilon = {} }, .to = inner.start});
+                    try bol_acceptList.append(.{ .state = inner.accept, .priority = it });
+                }
+            }
+            try merged_NFAs.append(.{ .start = start, .accept = NFAs[0].accept });
+            try aLists.append(try acceptList.toOwnedSlice());
+            try bol_NFAs.append(.{ .start = start, .accept = NFAs[0].accept });
+            try bol_aLists.append(try bol_acceptList.toOwnedSlice());
         }
 
         return .{
-            NFA{.start = start, .accept = NFAs[0].accept },
-            acceptList,
+            merged_NFAs,
+            aLists,
+            bol_NFAs,
+            bol_aLists,
         };
     }
 };

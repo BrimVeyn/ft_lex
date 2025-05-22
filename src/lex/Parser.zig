@@ -17,6 +17,7 @@ const LexParserError = error {
     RecursiveDefinitionNotAllowed,
     NoSuchDefinition,
     InvalidDefinition,
+    InvalidStartCondition,
     NoRulesGiven,
 } || error { OutOfMemory };
 
@@ -63,6 +64,7 @@ fn logError(self: *LexParser, err: LexParserError) LexParserError {
         error.RecursiveDefinitionNotAllowed => std.log.err("{s}: recursive definition not allowed", .{self.tokenizer.getFileName()}),
         error.NoSuchDefinition => std.log.err("{s}: no such definition", .{self.tokenizer.getFileName()}),
         error.InvalidDefinition => std.log.err("{s}: invalid regex", .{self.tokenizer.getFileName()}),
+        error.InvalidStartCondition => std.log.err("{s}: invalid start condition", .{self.tokenizer.getFileName()}),
         error.NoRulesGiven => std.log.err("{s}: no rule given", .{self.tokenizer.getFileName()}),
         else => {},
     }
@@ -248,16 +250,26 @@ fn extractStartConditions(self: *LexParser) !void {
         if (r.regex[0] != '<') 
             continue;
 
-        for (self.definitions.startConditions.data.items, 1..) |sc, it| {
-            if (std.mem.startsWith(u8, r.regex[1..], sc.name)) {
-                std.debug.print("Matched with: {s}\n", .{sc.name});
-                _ = it;
-                try r.sc.append(sc);
-                for (r.sc.items) |some| {
-                    std.debug.print("{}\n", .{some});
+        var outer_it: usize = 1;
+        outer: while (true) {
+            if (r.regex[outer_it] == '>') break;
+            if (r.regex[outer_it] == ',') outer_it += 1;
+
+            for (self.definitions.startConditions.data.items) |sc| {
+                if (std.mem.startsWith(u8, r.regex[outer_it..], sc.name)) {
+                    std.debug.print("Matched with: {s}\n", .{sc.name});
+                    try r.sc.append(sc);
+                    outer_it += sc.name.len;
+                    continue :outer;
                 }
             }
+            return error.InvalidStartCondition;
         }
+
+        for (r.sc.items) |some| {
+            std.debug.print("{}\n", .{some});
+        }
+
     }
 }
 
