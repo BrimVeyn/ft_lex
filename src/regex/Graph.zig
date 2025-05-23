@@ -1,7 +1,7 @@
-const std       = @import("std");
-const NFA       = @import("NFA.zig").NFA;
-const DFA       = @import("DFA.zig").DFA;
-const LexParser = @import("../lex/Parser.zig");
+const std         = @import("std");
+const NFA         = @import("NFA.zig").NFA;
+const DFA         = @import("DFA.zig").DFA;
+const LexParser   = @import("../lex/Parser.zig");
 const ColorCycler = @import("ColorCycler.zig");
 
 const format:[]const u8 = 

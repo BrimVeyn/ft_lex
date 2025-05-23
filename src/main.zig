@@ -132,59 +132,92 @@ pub fn main() !u8 {
                 std.log.err("NFA: {!}", .{e});
                 continue;
             };
+            // std.debug.print("{s}\n", .{try nfa.stringify(alloc)});
             try nfaList.append(nfa);
         }
 
         //The merge process will create as many NFA as there are active start conditions,
         //returning []NFA and [][]DFA.Acceptstate
-        const mergedNFAs, const aLists, const bolMergedNFAs, const bol_aLists = try nfaBuilder.merge(nfaList.items, lexParser);
+        const mergedNFAs, const bolMergedNFAs = try nfaBuilder.merge(nfaList.items, lexParser);
+
         defer {
-            for (aLists.items) |l| mergedNFAs.allocator.free(l);
-            for (bol_aLists.items) |l| mergedNFAs.allocator.free(l);
+            for (mergedNFAs.items) |m| {
+                if (m) |n| {
+                    alloc.free(n.acceptList);
+                }
+            }
+            for (bolMergedNFAs.items) |m| {
+                if (m) |n| {
+                    alloc.free(n.acceptList);
+                }
+            }
             mergedNFAs.deinit();
-            aLists.deinit();
             bolMergedNFAs.deinit();
-            bol_aLists.deinit();
         }
 
         var DFAs = try std.ArrayListUnmanaged(DFA).initCapacity(alloc, mergedNFAs.items.len);
-        var offsets = try std.ArrayListUnmanaged(usize).initCapacity(alloc, mergedNFAs.items.len);
+        var bol_DFAs = try std.ArrayListUnmanaged(struct { dfa: DFA, usize }).initCapacity(alloc, 1);
+        var offsets = try std.ArrayListUnmanaged(struct { offset: usize, sc: usize }).initCapacity(alloc, mergedNFAs.items.len);
         defer {
             for (DFAs.items) |*dfa| dfa.deinit();
+            for (bol_DFAs.items) |*dfa| dfa.*[0].deinit();
             DFAs.deinit(alloc);
+            bol_DFAs.deinit(alloc);
             offsets.deinit(alloc);
         }
 
-        for (mergedNFAs.items, aLists.items) |nfa, acceptList| {
+        for (mergedNFAs.items, 0..) |maybe_nfa, it| {
+            const fragment = if (maybe_nfa) |n| n else continue;
+            const nfa = fragment.nfa;
+            const acceptList = fragment.acceptList;
+
             var dfa = DFA.init(alloc, nfa, acceptList, ec.maxEc);
+            std.debug.print("[NORMAL] DFA {d}\n\n", .{it});
 
             try dfa.subset_construction();
             try dfa.minimize();
-            // try dfa.compress();
-            DFAs.appendAssumeCapacity(dfa);
-            offsets.appendAssumeCapacity(dfa.offset);
+            try dfa.compress();
+
+            try DFAs.append(alloc, dfa);
+            try offsets.append(alloc, .{.offset = dfa.offset, .sc = fragment.sc });
         }
 
-        var finalDfa = try DFA.merge(DFAs);
+        for (bolMergedNFAs.items, 0..) |maybe_nfa, it| {
+            const fragment = if (maybe_nfa) |n| n else continue;
+            const nfa = fragment.nfa;
+            const acceptList = fragment.acceptList;
+
+            var dfa = DFA.init(alloc, nfa, acceptList, ec.maxEc);
+            std.debug.print("[BOL] DFA {d}\n\n", .{it});
+
+            try dfa.subset_construction();
+            try dfa.minimize();
+            try dfa.compress();
+
+            try bol_DFAs.append(alloc, .{ dfa, fragment.sc });
+            try offsets.append(alloc, .{ .offset = dfa.offset, .sc = fragment.sc });
+        }
+
+        var finalDfa = try DFA.merge(DFAs, bol_DFAs, offsets);
         defer finalDfa.mergedDeinit();
 
         try finalDfa.compress();
 
         // std.debug.print("yy_ec: {d}\n", .{yy_ec});
-        for (DFAs.items, mergedNFAs.items, 0..) |dfa, nfa, i| {
-            const filename = try std.fmt.allocPrint(alloc, "test_{d}.graph", .{i});
-            defer alloc.free(filename);
+        // for (DFAs.items, mergedNFAs.items, 0..) |dfa, nfa, i| {
+        //     const filename = try std.fmt.allocPrint(alloc, "test_{d}.graph", .{i});
+        //     defer alloc.free(filename);
+        //
+        //     const outFile = try std.fs.cwd().createFile(filename, .{});
+        //     Graph.dotFormat(lexParser, nfa, dfa, &ec.yy_ec, outFile.writer());
+        // }
 
-            const outFile = try std.fs.cwd().createFile(filename, .{});
-            Graph.dotFormat(lexParser, nfa, dfa, &ec.yy_ec, outFile.writer());
-        }
-
-        const outFile = try std.fs.cwd().createFile("test_g.graph", .{});
-        Graph.dotFormat(lexParser, mergedNFAs.items[0], finalDfa, &ec.yy_ec, outFile.writer());
+        // const outFile = try std.fs.cwd().createFile("test_g.graph", .{});
+        // Graph.dotFormat(lexParser, mergedNFAs.items[0].?, finalDfa, &ec.yy_ec, outFile.writer());
 
         std.log.info("Compressed eql: {}\n", .{ try finalDfa.compareTTToCTT() });
-        try Printer.print(ec, finalDfa, offsets, lexParser, options);
-        // _ = options;
+        // try Printer.print(ec, finalDfa, offsets, lexParser, options);
+        _ = options;
 
     }
     return 0;

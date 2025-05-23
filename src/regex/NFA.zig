@@ -1,15 +1,15 @@
-const std           = @import("std");
-const ParserModule  = @import("Parser.zig");
-const ParserMakers  = @import("ParserMakers.zig");
-const NFADump       = @import("NFADump.zig");
-const DFAModule     = @import("DFA.zig");
-const Rules         = @import("../lex/Rules.zig");
-const LexParser     = @import("../lex/Parser.zig");
-const DFA           = DFAModule.DFA;
-const ArrayList     = std.ArrayList;
+const std                 = @import("std");
+const ParserModule        = @import("Parser.zig");
+const ParserMakers        = @import("ParserMakers.zig");
+const NFADump             = @import("NFADump.zig");
+const DFAModule           = @import("DFA.zig");
+const Rules               = @import("../lex/Rules.zig");
+const LexParser           = @import("../lex/Parser.zig");
+const DFA                 = DFAModule.DFA;
+const ArrayList           = std.ArrayList;
 
-pub const StateId   = usize;
-pub const NFA_LIMIT = 32_000;
+pub const StateId         = usize;
+pub const NFA_LIMIT       = 32_000;
 pub const RECURSION_LIMIT = 10_000;
 
 pub const Symbol = union(enum) {
@@ -377,28 +377,25 @@ pub const NFABuilder = struct {
         };
     }
 
+    const DFAFragment = struct {
+        nfa: NFA,
+        acceptList: []DFA.AcceptState,
+        sc: usize,
+    };
+
     pub fn merge(
         self: *NFABuilder,
         NFAs: []NFA, lexParser: LexParser
-    ) 
-    !struct { 
-        ArrayList(NFA),
-        ArrayList([]DFA.AcceptState),
-        ArrayList(NFA),
-        ArrayList([]DFA.AcceptState),
+    ) !struct { 
+        ArrayList(?DFAFragment),
+        ArrayList(?DFAFragment),
     } {
 
-        var merged_NFAs = ArrayList(NFA).init(self.alloc);
+        var merged_NFAs = ArrayList(?DFAFragment).init(self.alloc);
         errdefer merged_NFAs.deinit();
 
-        var aLists = ArrayList([]DFA.AcceptState).init(self.alloc);
-        errdefer aLists.deinit();
-
-        var bol_NFAs = ArrayList(NFA).init(self.alloc);
+        var bol_NFAs = ArrayList(?DFAFragment).init(self.alloc);
         errdefer bol_NFAs.deinit();
-
-        var bol_aLists = ArrayList([]DFA.AcceptState).init(self.alloc);
-        errdefer bol_aLists.deinit();
 
         var acceptList = ArrayList(DFA.AcceptState).init(self.alloc);
         errdefer acceptList.deinit();
@@ -407,28 +404,38 @@ pub const NFABuilder = struct {
         errdefer bol_acceptList.deinit();
 
         self.next_id += 1;
-        var start = try self.makeState(0);
-        var bol_start = try self.makeState(0);
+        var start, var bol_start = .{ try self.makeState(0), try self.makeState(0) };
         // First iteration to fill rules that are active in INITIAL sc
         for (NFAs, lexParser.rules.items, 0..) |inner, rule, it| {
             if (rule.sc.items.len == 0) {
                 if (inner.matchStart == false) {
+                    std.debug.print("[NORMAL] Pushing rule: {s}\n", .{rule.regex});
                     try start.transitions.append(.{ .symbol = .{ .epsilon = {} }, .to = inner.start});
                     try acceptList.append(.{ .state = inner.accept, .priority = it });
                 } else {
+                    std.debug.print("[BOL] Pushing rule: {s}\n", .{rule.regex});
                     try bol_start.transitions.append(.{ .symbol = .{ .epsilon = {} }, .to = inner.start});
                     try bol_acceptList.append(.{ .state = inner.accept, .priority = it });
                 }
             }
         }
-        try merged_NFAs.append(.{ .start = start, .accept = NFAs[0].accept });
-        try aLists.append(try acceptList.toOwnedSlice());
-        try bol_NFAs.append(.{ .start = start, .accept = NFAs[0].accept });
-        try bol_aLists.append(try bol_acceptList.toOwnedSlice());
+        if (acceptList.items.len != 0) {
+            try merged_NFAs.append(DFAFragment{
+                .nfa = .{ .start = start, .accept = NFAs[0].accept },
+                .acceptList = try acceptList.toOwnedSlice(),
+                .sc = 0,
+            });
+        } else { try merged_NFAs.append(null); }
+        if (bol_acceptList.items.len != 0) {
+            try bol_NFAs.append(DFAFragment{
+                .nfa = .{ .start = bol_start, .accept = NFAs[0].accept },
+                .acceptList = try bol_acceptList.toOwnedSlice(),
+                .sc = 0,
+            });
+        } else { try bol_NFAs.append(null); }
 
-        for (lexParser.definitions.startConditions.data.items) |sc| {
-            start = try self.makeState(0);
-            bol_start = try self.makeState(0);
+        for (lexParser.definitions.startConditions.data.items, 1..) |sc, scId| {
+            start, bol_start = .{ try self.makeState(0), try self.makeState(0) };
             for (NFAs, lexParser.rules.items, 0..) |inner, rule, it| {
                 const found = blk: {
                     if (inner.matchStart == true) break: blk false;
@@ -446,17 +453,26 @@ pub const NFABuilder = struct {
                     try bol_acceptList.append(.{ .state = inner.accept, .priority = it });
                 }
             }
-            try merged_NFAs.append(.{ .start = start, .accept = NFAs[0].accept });
-            try aLists.append(try acceptList.toOwnedSlice());
-            try bol_NFAs.append(.{ .start = start, .accept = NFAs[0].accept });
-            try bol_aLists.append(try bol_acceptList.toOwnedSlice());
+
+            if (acceptList.items.len != 0) {
+                try merged_NFAs.append(DFAFragment{
+                    .nfa = .{ .start = start, .accept = NFAs[0].accept },
+                    .acceptList = try acceptList.toOwnedSlice(),
+                    .sc = scId,
+                });
+            } else { try merged_NFAs.append(null); }
+            if (bol_acceptList.items.len != 0) {
+                try bol_NFAs.append(DFAFragment{
+                    .nfa = .{ .start = bol_start, .accept = NFAs[0].accept },
+                    .acceptList = try bol_acceptList.toOwnedSlice(),
+                    .sc = scId,
+                });
+            } else { try bol_NFAs.append(null); }
         }
 
         return .{
             merged_NFAs,
-            aLists,
             bol_NFAs,
-            bol_aLists,
         };
     }
 };

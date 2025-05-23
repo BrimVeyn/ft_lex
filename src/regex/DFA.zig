@@ -301,7 +301,32 @@ pub const DFA = struct {
 
     pub const minimize = DFAMinimizer.minimize;
 
-    pub fn merge(DFAs: ArrayListUnmanaged(DFA)) !DFA {
+    // pub fn mergeBols(DFAs: ArrayListUnmanaged(struct {DFA, usize}), finalDFA: *DFA, offsets: ArrayListUnmanaged(struct { offset: usize, sc: usize })) !void  {
+    //     for (DFAs.items) |dfa| {
+    //         const reference_row = blk: {
+    //             for (offsets.items) |o| {
+    //                 if (o.sc == dfa[1]) break: blk o.offset;
+    //             }
+    //             break: blk null;
+    //         };
+    //         _ = reference_row;
+    //     }
+    // }
+
+    pub const DFASc = struct {
+        dfa: DFA,
+        sc: usize,
+    };
+
+    pub const OffsetSc = struct {
+        offset: usize,
+        sc: usize,
+    };
+
+    pub fn mergeNormals(DFAs: ArrayListUnmanaged(DFA), bolDFAs: ArrayListUnmanaged(struct{ DFA, usize })) !DFA {
+        //TODO: Find a better way to handle this error and add a relevant error message
+        if (DFAs.items.len == 0) return error.NoDFACouldBeBuilt;
+
         var merged = DFA{
             .alloc = DFAs.items[0].alloc,
             .yy_ec_highest = DFAs.items[0].yy_ec_highest,
@@ -317,11 +342,25 @@ pub const DFA = struct {
             try minDfa.appendSlice(dfa.minimized.?.data.items);
         }
 
+        for (bolDFAs.items) |dfa| {
+            try acceptList.appendSlice(dfa[0].accept_list);
+            try minDfa.appendSlice(dfa[0].minimized.?.data.items);
+        }
+
         merged.minimized = minDfa;
         merged.accept_list = try acceptList.toOwnedSlice();
         merged.yy_accept = try merged.getAcceptTable();
 
         return merged;
+
+    }
+
+    pub fn merge(DFAs: ArrayListUnmanaged(DFA), bolDFAs: ArrayListUnmanaged(struct{ DFA, usize }), offsets: ArrayListUnmanaged(struct { offset: usize, sc: usize })) !DFA {
+        const finalDFA = try mergeNormals(DFAs, bolDFAs);
+        _ = offsets;
+        // try mergeBols(bolDFAs, &finalDFA, offsets);
+
+        return finalDFA;
     }
 
     pub fn getAcceptTable(self: DFA) ![]i16 {
