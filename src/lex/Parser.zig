@@ -13,6 +13,7 @@ const Rule                  = RuleModule.Rule;
 const LexParser = @This();
 
 const LexParserError = error {
+    InitialRedefinition,
     TooLongAName,
     RecursiveDefinitionNotAllowed,
     NoSuchDefinition,
@@ -59,7 +60,10 @@ fn advance(self: *LexParser) !LexToken {
 }
 
 fn logError(self: *LexParser, err: LexParserError) LexParserError {
+    //TODO: Improve error location
+    std.log.err("{s}:{d}:{d}", .{self.tokenizer.getFileName(), self.tokenizer.pos.line, self.tokenizer.pos.col});
     switch (err) {
+        error.InitialRedefinition => std.log.err("{s}: invalid start condition: \"INITIAL\" is already defined", .{self.tokenizer.getFileName()}),
         error.TooLongAName => std.log.err("{s}: bad substitution: too long a name", .{self.tokenizer.getFileName()}),
         error.RecursiveDefinitionNotAllowed => std.log.err("{s}: recursive definition not allowed", .{self.tokenizer.getFileName()}),
         error.NoSuchDefinition => std.log.err("{s}: no such definition", .{self.tokenizer.getFileName()}),
@@ -206,9 +210,13 @@ fn expandRules(self: *LexParser) !void {
         // std.debug.print("After sub: {s}\n", .{rule.regex});
     }
 }
+
+var InitialStr: [7]u8 = .{ 'I', 'N', 'I', 'T', 'I', 'A', 'L' };
+
 fn parseDefinitions(self: *LexParser) !void {
     //Skip potential blank lines
     self.tokenizer.eatWhitespacesAndNewline();
+    try self.definitions.startConditions.data.append(self.alloc, .{ .name = InitialStr[0..], .type = .Inclusive });
 
     //Parse definition section
     outer: while (true) {
@@ -224,6 +232,7 @@ fn parseDefinitions(self: *LexParser) !void {
             .startCondition => |start| { 
                 defer start.name.deinit();
                 for (start.name.items) |n| {
+                    if (std.ascii.eqlIgnoreCase(n, "INITIAL")) return self.logError(LexParserError.InitialRedefinition);
                     try self.definitions.startConditions.data.append(self.alloc, .{.type = start.type, .name = n});
                 }
             },

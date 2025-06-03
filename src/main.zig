@@ -18,6 +18,7 @@ const NFAModule         = @import("regex/NFA.zig");
 const NFA               = NFAModule.NFA;
 
 const DFAModule         = @import("regex/DFA.zig");
+const DFADump           = @import("regex/DFADump.zig");
 const DFA               = DFAModule.DFA;
 
 const Graph             = @import("regex/Graph.zig");
@@ -73,7 +74,7 @@ const DebugAllocatorOptions: std.heap.DebugAllocatorConfig = .{
     .stack_trace_frames = 15,
     .retain_metadata = true,
     // .verbose_log = true,
-    .thread_safe = true,
+    // .thread_safe = true,
 };
 
 
@@ -139,86 +140,64 @@ pub fn main() !u8 {
         //The merge process will create as many NFA as there are active start conditions,
         //returning []NFA and [][]DFA.Acceptstate
         const mergedNFAs, const bolMergedNFAs = try nfaBuilder.merge(nfaList.items, lexParser);
-
         defer {
-            for (mergedNFAs.items) |m| {
-                if (m) |n| {
-                    alloc.free(n.acceptList);
-                }
-            }
-            for (bolMergedNFAs.items) |m| {
-                if (m) |n| {
-                    alloc.free(n.acceptList);
-                }
-            }
+            for (mergedNFAs.items) |m| alloc.free(m.acceptList);
+            for (bolMergedNFAs.items) |m| alloc.free(m.acceptList);
             mergedNFAs.deinit();
             bolMergedNFAs.deinit();
         }
 
-        var DFAs = try std.ArrayListUnmanaged(DFA).initCapacity(alloc, mergedNFAs.items.len);
-        var bol_DFAs = try std.ArrayListUnmanaged(struct { dfa: DFA, usize }).initCapacity(alloc, 1);
-        var offsets = try std.ArrayListUnmanaged(struct { offset: usize, sc: usize }).initCapacity(alloc, mergedNFAs.items.len);
+        var DFAs = try std.ArrayListUnmanaged(DFA.DFA_SC).initCapacity(alloc, mergedNFAs.items.len);
+        var bol_DFAs = try std.ArrayListUnmanaged(DFA.DFA_SC).initCapacity(alloc, 1);
         defer {
-            for (DFAs.items) |*dfa| dfa.deinit();
-            for (bol_DFAs.items) |*dfa| dfa.*[0].deinit();
+            for (DFAs.items) |*dfa_sc| dfa_sc.dfa.deinit();
+            for (bol_DFAs.items) |*dfa_sc| dfa_sc.dfa.deinit();
             DFAs.deinit(alloc);
             bol_DFAs.deinit(alloc);
-            offsets.deinit(alloc);
         }
 
-        for (mergedNFAs.items, 0..) |maybe_nfa, it| {
-            const fragment = if (maybe_nfa) |n| n else continue;
-            const nfa = fragment.nfa;
-            const acceptList = fragment.acceptList;
-
-            var dfa = DFA.init(alloc, nfa, acceptList, ec.maxEc);
+        for (mergedNFAs.items, 0..) |nfa, it| {
             std.debug.print("[NORMAL] DFA {d}\n\n", .{it});
-
-            try dfa.subset_construction();
-            try dfa.minimize();
-            try dfa.compress();
-
-            try DFAs.append(alloc, dfa);
-            try offsets.append(alloc, .{.offset = dfa.offset, .sc = fragment.sc });
+            const dfa = try DFA.buildFromNFA(alloc, nfa.nfa, nfa.acceptList, ec.maxEc);
+            try DFAs.append(alloc, .{ .dfa = dfa, .sc = nfa.sc });
         }
 
-        for (bolMergedNFAs.items, 0..) |maybe_nfa, it| {
-            const fragment = if (maybe_nfa) |n| n else continue;
-            const nfa = fragment.nfa;
-            const acceptList = fragment.acceptList;
-
-            var dfa = DFA.init(alloc, nfa, acceptList, ec.maxEc);
+        for (bolMergedNFAs.items, 0..) |nfa, it| {
             std.debug.print("[BOL] DFA {d}\n\n", .{it});
-
-            try dfa.subset_construction();
-            try dfa.minimize();
-            try dfa.compress();
-
-            try bol_DFAs.append(alloc, .{ dfa, fragment.sc });
-            try offsets.append(alloc, .{ .offset = dfa.offset, .sc = fragment.sc });
+            // std.debug.print("{s}\n", .{try nfa.nfa.stringify(alloc)});
+            const dfa = try DFA.buildFromNFA(alloc, nfa.nfa, nfa.acceptList, ec.maxEc);
+            try bol_DFAs.append(alloc, .{ .dfa = dfa, .sc = nfa.sc });
         }
 
-        var finalDfa = try DFA.merge(DFAs, bol_DFAs, offsets);
+        var finalDfa = try DFA.merge(DFAs, bol_DFAs);
         defer finalDfa.mergedDeinit();
 
-        try finalDfa.compress();
+        // DFADump.transTableDump(finalDfa.transTable.?);
 
-        // std.debug.print("yy_ec: {d}\n", .{yy_ec});
-        // for (DFAs.items, mergedNFAs.items, 0..) |dfa, nfa, i| {
-        //     const filename = try std.fmt.allocPrint(alloc, "test_{d}.graph", .{i});
-        //     defer alloc.free(filename);
-        //
-        //     const outFile = try std.fs.cwd().createFile(filename, .{});
-        //     Graph.dotFormat(lexParser, nfa, dfa, &ec.yy_ec, outFile.writer());
-        // }
+        for (DFAs.items, mergedNFAs.items, 0..) |dfa, nfa, i| {
+            const filename = try std.fmt.allocPrint(alloc, "test_{d}.graph", .{i});
+            defer alloc.free(filename);
 
-        // const outFile = try std.fs.cwd().createFile("test_g.graph", .{});
-        // Graph.dotFormat(lexParser, mergedNFAs.items[0].?, finalDfa, &ec.yy_ec, outFile.writer());
+            const outFile = try std.fs.cwd().createFile(filename, .{});
+            defer outFile.close();
+            Graph.dotFormat(lexParser, nfa.nfa, dfa.dfa, &ec.yy_ec, outFile.writer());
+        }
 
-        std.log.info("Compressed eql: {}\n", .{ try finalDfa.compareTTToCTT() });
-        // try Printer.print(ec, finalDfa, offsets, lexParser, options);
-        _ = options;
+        const outFile = try std.fs.cwd().createFile("test_g.graph", .{});
+        defer outFile.close();
+        Graph.dotFormat(lexParser, mergedNFAs.items[0].nfa, finalDfa, &ec.yy_ec, outFile.writer());
 
+        std.log.info("Compressed eql: {}", .{ try finalDfa.compareTTToCTT() });
+        std.log.info("Uncompressed size: {d}", .{finalDfa.transTable.?.items.len * ec.maxEc});
+        std.log.info("Compressed size: {d}", .{(finalDfa.cTransTable.?.base.len * 2) + (finalDfa.cTransTable.?.next.len * 2)});
+        try Printer.print(
+            ec, 
+            DFAs,
+            bol_DFAs,
+            finalDfa,
+            lexParser,
+            options
+        );
     }
     return 0;
 }

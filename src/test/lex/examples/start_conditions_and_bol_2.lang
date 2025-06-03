@@ -1,0 +1,16 @@
+#define
+cmd start
+print This won't match
+
+cmd start
+print Hello World
+cmd end
+
+// This is a comment
+/* This is a
+multi-line comment */
+
+"hello world"
+"escape sequence: \n\t\\\""
+"unterminated string
+

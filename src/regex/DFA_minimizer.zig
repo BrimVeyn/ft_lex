@@ -25,6 +25,7 @@ pub const Signature = struct {
             return Symbol.lessThanFn({}, a.symbol, b.symbol);
         }
     };
+
     data: std.ArrayList(SignatureTransition),
     accept_id: ?usize,
 
@@ -43,7 +44,10 @@ pub const Signature = struct {
     }
 
     pub fn deinit(self: *Signature) void { self.data.deinit(); }
-    pub fn append(self: *Signature, item: SignatureTransition) !void { try self.data.append(item); }
+
+    pub fn append(self: *Signature, item: SignatureTransition) !void {
+        try self.data.append(item); 
+    }
 
     pub fn sort(self: *Signature) void {
         std.mem.sort(SignatureTransition, self.data.items[0..], {}, SignatureTransition.lessThanFn);
@@ -101,11 +105,11 @@ pub const Partition = struct {
     }
 
     pub fn deinit(self: *Partition) void {
-        defer self.data.deinit();
         for (self.data.items) |*G| {
             if (G.signature) |*sig| sig.deinit();
             G.set.deinit();
         }
+        self.data.deinit();
     }
 
     pub fn dump(self: Partition, table: DFA.DfaTable) !void {

@@ -24,7 +24,7 @@ fn printTable(comptime T: type, writer: std.fs.File.Writer, table: []T, head: []
 
 
 const actionsHead =
-\\void yy_action(int accept_id) {
+\\static inline void yy_action(int accept_id) {
 \\  switch (accept_id) {
 \\
 ;
@@ -64,11 +64,20 @@ fn printActions(lParser: LexParser, writer: std.fs.File.Writer) !void {
     _ = try writer.write(actionsTail);
 }
 
-fn printSCEnum(lParser: LexParser, offsets: ArrayListUnmanaged(usize), writer: std.fs.File.Writer) !void {
+fn printSCEnum(
+    lParser: LexParser,
+    dfas: ArrayListUnmanaged(DFA.DFA_SC),
+    bol_dfas: ArrayListUnmanaged(DFA.DFA_SC),
+    writer: std.fs.File.Writer
+) !void {
     _ = try writer.write("enum {\n");
-    _ = try writer.write("\tINITIAL = 0,\n");
-    for (lParser.definitions.startConditions.data.items, offsets.items[1..]) |sc, offset| {
-        _ = try writer.print("\t{s} = {d},\n", .{sc.name, offset});
+    for (lParser.definitions.startConditions.data.items, dfas.items[0..], bol_dfas.items[0..]) |sc, dfa, bol| {
+        //NOTE: We encode both Bol and Regular start position in a single int rather than creating an other enum.
+        //Flex is smarter than that with table representation as the bol start is always one state after the sc regular start.
+        //But with current implementation, it'll be a lot of overhead to use this representation.
+        std.debug.print("Offset bol: {d}, offset regular: {d}\n", .{bol.dfa.offset, dfa.dfa.offset});
+        const value = (bol.dfa.offset << @as(u6, 16)) + dfa.dfa.offset; 
+        _ = try writer.print("\t{s} = {d},\n", .{sc.name, value});
     }
     _ = try writer.write("};\n\n");
 }
@@ -77,8 +86,9 @@ const ArrayListUnmanaged = std.ArrayListUnmanaged;
 
 pub fn print(
     ec: EC,
+    dfas: ArrayListUnmanaged(DFA.DFA_SC),
+    bol_dfas: ArrayListUnmanaged(DFA.DFA_SC),
     dfa: DFA,
-    offsets: ArrayListUnmanaged(usize),
     lexParser: LexParser,
     opts: LexOptions
 ) !void {
@@ -98,7 +108,8 @@ pub fn print(
     try printTable(i16, writer, dfa.cTransTable.?.check, "check");
     // try printSCTable(lexParser, writer);
 
-    try printSCEnum(lexParser, offsets, writer);
+    try printSCEnum(lexParser, dfas, bol_dfas, writer);
+    // try printBOLEnum(lexParser, dfas, writer);
 
     try printActions(lexParser, writer);
 

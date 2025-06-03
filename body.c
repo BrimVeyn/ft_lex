@@ -25,30 +25,19 @@ static void yy_unread_char(void) {
 	if (yy_buf_pos > 0) yy_buf_pos--;
 }
 
-static int yy_start = INITIAL;
+static int yy_start;
 
-#define BEGIN(condition) (yy_start) = condition
-
+#define BEGIN(condition) ((yy_start) = (condition))
+#define YY_AT_BOL() (yy_buf_pos == 0 || (yy_buf_pos > 0 && yy_buffer[yy_buf_pos - 1] == '\n'))
+#define YY_BOL() ((yy_start >> 16))
 
 // --- Action dispatcher (to be generated per .l file) ---
-void yy_action(int accept_id) {
-	switch (accept_id) {
-		case 1:
-			{
-				printf("rule 1 matched\n");
-				BEGIN(STRING);
-			}
-			break;
-		case 2:
-			printf("matched !\n");
-			break;
-		default:
-			fprintf(stderr, "Unknown action id: %d\n", accept_id);
-			break;
-	}
+static inline void yy_action(int accept_id) {
+
+  
 }
 
-int yy_next_state(int s, int ec) {
+static inline int yy_next_state(int s, int ec) {
 	while (s != -1) {
 		if (yy_check[yy_base[s] + ec] == s)
 			return yy_next[yy_base[s] + ec];
@@ -59,9 +48,20 @@ int yy_next_state(int s, int ec) {
 
 // --- Core DFA scanning function ---
 int yylex(void) {
+	BEGIN(INITIAL);
+
+	int yy_failed_at_bol = 0;
+
 	int i = 0;
 	while (i++ < 1000) {
-		int state = yy_start;
+		int state = (yy_start & 0xFFFF);
+
+		int yy_at_bol = yy_failed_at_bol ? 0 : YY_AT_BOL();
+
+		state = yy_at_bol ? YY_BOL() : state;
+
+		yy_failed_at_bol = 0;
+
 		int last_accepting_state = -1;
 		int last_accepting_pos = -1;
 
@@ -76,9 +76,11 @@ int yylex(void) {
 			last_read_c = (unsigned char) last_read_c;
 
 			int sym = yy_ec[last_read_c];
-			// fprintf(stderr, "-------- EC: %d\n", sym);
 
+			/*fprintf(stderr, "-------- EC: %d\n", sym);*/
+			/*fprintf(stderr, "-------- State: %d\n", state);*/
 			int trans_index = yy_base[state] + sym;
+			/*fprintf(stderr, "-------- TransIndex: %d\n", trans_index);*/
 			int next_state;
 
 			next_state = yy_next_state(state, sym);
@@ -96,6 +98,13 @@ int yylex(void) {
 			}
 		}
 		// fprintf(stderr, "BREAK\n");
+		if (last_accepting_state <= 0 && yy_at_bol) {
+			while (yy_buf_pos > start_pos) {
+				yy_unread_char();
+			}
+			yy_failed_at_bol = 1;
+			continue;
+		}
 
 		if (last_accepting_state > 0) {
 			// Backtrack
@@ -135,4 +144,6 @@ int main(void) {
 	yyout = stdout;
 	yylex();
 }
+
+
 

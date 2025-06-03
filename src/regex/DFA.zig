@@ -97,6 +97,25 @@ pub const DFA = struct {
     yy_accept: ?[]i16 = null,
     offset: usize = 0,
 
+
+    pub fn buildFromNFA(alloc: std.mem.Allocator, nfa: NFA, acceptList: []AcceptState, maxEc: u8) !DFA {
+        var dfa = DFA.init(alloc, nfa, acceptList, maxEc);
+
+        try dfa.subset_construction();
+        try dfa.minimize();
+        //HACK: The compression in unnecessary here and for debug purpose only
+        try dfa.compress();
+
+        return dfa;
+    }
+
+    pub fn buildEmptyDFa(alloc: std.mem.Allocator, maxEc: u8) !DFA {
+        const nfa = try NFAModule.NFABuilder.initEmpty(alloc);
+        var dummy_al = try std.ArrayListUnmanaged(DFA.AcceptState).initCapacity(alloc, 1);
+        defer dummy_al.deinit(alloc);
+        return buildFromNFA(alloc, nfa, try dummy_al.toOwnedSlice(alloc), maxEc);
+    }
+
     pub fn init(
         alloc: std.mem.Allocator,
         nfa: NFA,
@@ -139,6 +158,7 @@ pub const DFA = struct {
     pub fn mergedDeinit(self: *DFA) void {
         self.alloc.free(self.accept_list);
         self.minimized.?.data.deinit();
+
         if (self.cTransTable) |ctt| {
             self.alloc.free(ctt.next);
             self.alloc.free(ctt.base);
@@ -299,37 +319,23 @@ pub const DFA = struct {
         }
     }
 
-    pub const minimize = DFAMinimizer.minimize;
 
-    // pub fn mergeBols(DFAs: ArrayListUnmanaged(struct {DFA, usize}), finalDFA: *DFA, offsets: ArrayListUnmanaged(struct { offset: usize, sc: usize })) !void  {
-    //     for (DFAs.items) |dfa| {
-    //         const reference_row = blk: {
-    //             for (offsets.items) |o| {
-    //                 if (o.sc == dfa[1]) break: blk o.offset;
-    //             }
-    //             break: blk null;
-    //         };
-    //         _ = reference_row;
-    //     }
-    // }
-
-    pub const DFASc = struct {
+    pub const DFA_SC = struct {
         dfa: DFA,
         sc: usize,
     };
 
-    pub const OffsetSc = struct {
-        offset: usize,
-        sc: usize,
-    };
 
-    pub fn mergeNormals(DFAs: ArrayListUnmanaged(DFA), bolDFAs: ArrayListUnmanaged(struct{ DFA, usize })) !DFA {
-        //TODO: Find a better way to handle this error and add a relevant error message
-        if (DFAs.items.len == 0) return error.NoDFACouldBeBuilt;
+    pub const minimize = DFAMinimizer.minimize;
 
-        var merged = DFA{
-            .alloc = DFAs.items[0].alloc,
-            .yy_ec_highest = DFAs.items[0].yy_ec_highest,
+    pub fn merge(
+        DFAs: ArrayListUnmanaged(DFA_SC),
+        bolDFAs: ArrayListUnmanaged(DFA_SC),
+    ) !DFA {
+
+        var merged = DFA {
+            .alloc = DFAs.items[0].dfa.alloc,
+            .yy_ec_highest = DFAs.items[0].dfa.yy_ec_highest,
         };
 
         var acceptList = std.ArrayList(AcceptState).init(merged.alloc);
@@ -337,30 +343,42 @@ pub const DFA = struct {
 
         var minDfa = Partition.init(merged.alloc);
 
-        for (DFAs.items) |dfa| {
-            try acceptList.appendSlice(dfa.accept_list);
-            try minDfa.appendSlice(dfa.minimized.?.data.items);
+        for (DFAs.items) |dfa_sc| {
+            try acceptList.appendSlice(dfa_sc.dfa.accept_list);
+            try minDfa.appendSlice(dfa_sc.dfa.minimized.?.data.items);
         }
 
-        for (bolDFAs.items) |dfa| {
-            try acceptList.appendSlice(dfa[0].accept_list);
-            try minDfa.appendSlice(dfa[0].minimized.?.data.items);
+        for (bolDFAs.items) |dfa_sc| {
+            const dfaRow = blk: {
+                for (DFAs.items) |nDFa_sc|
+                if (nDFa_sc.sc == dfa_sc.sc) break :blk minDfa.data.items[nDFa_sc.dfa.offset];
+                unreachable;
+            };
+            var bolRow = &dfa_sc.dfa.minimized.?.data.items[0];
+
+            outer: for (dfaRow.signature.?.data.items) |transition| {
+                for (bolRow.signature.?.data.items, 0..) |bolTrans, it| {
+                    _ = it;
+                    if (Symbol.eql(transition.symbol, bolTrans.symbol)) {
+                        // _ = bolRow.signature.?.data.orderedRemove(it);
+                        continue: outer;
+                    }
+                }
+                try bolRow.signature.?.append(transition);
+            }
+            bolRow.signature.?.sort();
+
+            try acceptList.appendSlice(dfa_sc.dfa.accept_list);
+            try minDfa.appendSlice(dfa_sc.dfa.minimized.?.data.items);
         }
 
         merged.minimized = minDfa;
         merged.accept_list = try acceptList.toOwnedSlice();
         merged.yy_accept = try merged.getAcceptTable();
 
+        try merged.compress();
+
         return merged;
-
-    }
-
-    pub fn merge(DFAs: ArrayListUnmanaged(DFA), bolDFAs: ArrayListUnmanaged(struct{ DFA, usize }), offsets: ArrayListUnmanaged(struct { offset: usize, sc: usize })) !DFA {
-        const finalDFA = try mergeNormals(DFAs, bolDFAs);
-        _ = offsets;
-        // try mergeBols(bolDFAs, &finalDFA, offsets);
-
-        return finalDFA;
     }
 
     pub fn getAcceptTable(self: DFA) ![]i16 {
@@ -385,11 +403,11 @@ pub const DFA = struct {
         //Keep track of the transition count to fill the yy_nxt array later
         var nTransition: usize = 0;
 
-        var realTransTable = try std.ArrayList(std.ArrayList(i16))
+        var realTransTable = try ArrayList(ArrayList(i16))
             .initCapacity(self.alloc, minDFA.data.items.len);
 
         for (minDFA.data.items, 0..) |state, i| {
-            realTransTable.appendAssumeCapacity(try std.ArrayList(i16).initCapacity(self.alloc, self.yy_ec_highest + 1));
+            realTransTable.appendAssumeCapacity(try ArrayList(i16).initCapacity(self.alloc, self.yy_ec_highest + 1));
             realTransTable.items[i].expandToCapacity();
             @memset(realTransTable.items[i].items[0..], -1);
 
@@ -621,9 +639,9 @@ pub const DFA = struct {
             }
         }
 
-        transTableDump(transTable);
+        DFADump.transTableDump(transTable);
         std.debug.print("\n", .{});
-        compressedTableDump(base, next, check, default);
+        DFADump.compressedTableDump(base, next, check, default);
         std.debug.print("\n\n", .{});
 
         self.cTransTable = .{ 
@@ -665,72 +683,3 @@ pub const DFA = struct {
     }
 
 };
-
-const Green         = "\x1b[32m"; // Green for Char and CharClass
-const BrightGreen   = "\x1b[92m"; // Bright green for literal chars
-const Yellow        = "\x1b[33m"; // Yellow for Concat and TrailingContext
-const Cyan          = "\x1b[36m"; // Cyan for Repetition
-const Blue          = "\x1b[34m"; // Blue for Alternation
-const Magenta       = "\x1b[35m"; // Magenta for Groups
-const Red           = "\x1b[31m"; // Red for Anchors
-const White         = "\x1b[97m"; // White for label text
-const Reset         = "\x1b[0m";  // Reset color
-
-const Veci16 = std.ArrayList(i16);
-
-fn compressedTableDump(base: Veci16, next: Veci16, check: Veci16, default: Veci16) void {
-    const helper = struct {
-        fn head(str: []const u8) void { std.debug.print("{s:10}:", .{str}); }
-        fn body(table: Veci16) void { for (table.items) |i| std.debug.print("{d:4}", .{i}); std.debug.print("\n", .{}); }
-        fn enumerate(max: usize) void { for (0..max) |i| std.debug.print("{d:4}", .{i}); std.debug.print("\n", .{}); }
-    };
-
-    const maxLen = std.sort.max(
-        usize, 
-        &[_]usize{base.items.len, next.items.len, check.items.len},
-        {}, std.sort.asc(usize)
-    ).?;
-
-    helper.head("index");
-    helper.enumerate(maxLen);
-    helper.head("base");
-    helper.body(base);
-    helper.head("next");
-    helper.body(next);
-    helper.head("check");
-    helper.body(check);
-    helper.head("default");
-    helper.body(default);
-}
-
-fn transTableDump(table: std.ArrayList(std.ArrayList(i16))) void {
-    const helper = struct {
-        fn head(str: []const u8) void { std.debug.print("{s:10}:", .{str}); }
-        fn body(t: Veci16) void { for (t.items) |i| std.debug.print("{d:4}", .{i}); std.debug.print("\n", .{}); }
-        fn enumerate(min:usize, max:usize) void { for (min..max) |i| std.debug.print("{d:4}", .{i}); std.debug.print("\n", .{}); }
-    };
-
-    helper.head("state/ec");
-    helper.enumerate(0, table.items[0].items.len);
-    for (table.items, 0..) |row, i| {
-        var buffer:[100]u8 = .{0} ** 100;
-        _ = std.fmt.bufPrint(&buffer, "{d:10}", .{i}) catch return ;
-        helper.head(buffer[0..]);
-
-        for (row.items) |t| {
-            if (t != -1) {
-                std.debug.print("{d:4}", .{t});
-            } else {
-                std.debug.print("{s}{d:4}{s}", .{Red, -1, Reset});
-            }
-        }
-        std.debug.print("\n", .{});
-    }
-}
-
-// fn nextState(state: usize, symbol: u8) usize {
-//     const index: usize = cDFA.base[state] + symbol;
-//     if (cDFA.check[index] == state) {
-//         return cDFA.next[index];
-//     } else return 0;
-// }

@@ -23,8 +23,8 @@ pub const Symbol = union(enum) {
 
         return switch (lhs) {
             .char => |c| c == rhs.char,
-            .epsilon => true,
             .ec => |ec| ec == rhs.ec,
+            .epsilon => true,
         };
     }
 
@@ -67,59 +67,6 @@ pub const NFA = struct {
     start_condition: ?[64:0]u8 = null,
 
     pub const stringify = NFADump.stringify;
-
-    pub fn clone(self: NFA, alloc: std.mem.Allocator, next_id: *StateId) !NFA {
-        var state_map = std.AutoHashMap(*State, *State).init(alloc);
-        defer state_map.deinit();
-
-        const cloned_start = try cloneState(self.start, alloc, &state_map, next_id);
-        const cloned_accept = try cloneState(self.accept, alloc, &state_map, next_id);
-
-        var cloned_lookahead: ?*NFA = null;
-        if (self.lookAhead) |la| {
-            const la_clone = try alloc.create(NFA);
-            la_clone.* = try la.clone(alloc, next_id);
-            cloned_lookahead = la_clone;
-        }
-
-        return NFA{
-            .start = cloned_start,
-            .accept = cloned_accept,
-            .lookAhead = cloned_lookahead,
-            .matchStart = self.matchStart,
-            .matchEnd = self.matchEnd,
-            // .start_condition = self.start_condition,
-        };
-    }
-
-    fn cloneState(
-        original: *State,
-        alloc: std.mem.Allocator,
-        map: *std.AutoHashMap(*State, *State),
-        next_id: *StateId,
-    ) !*State {
-        if (map.get(original)) |existing| {
-            return existing;
-        }
-
-        const cloned = try alloc.create(State);
-        cloned.* = State{
-            .id = next_id.*,
-            .transitions = std.ArrayList(Transition).init(alloc),
-        };
-        next_id.* += 1;
-
-        try map.put(original, cloned);
-
-        for (original.transitions.items) |t| {
-            const cloned_to = try cloneState(t.to, alloc, map, next_id);
-            try cloned.transitions.append(.{
-                .symbol = t.symbol,
-                .to = cloned_to,
-            });
-        }
-        return cloned;
-    }
 };
 
 pub const NFABuilder = struct {
@@ -133,11 +80,23 @@ pub const NFABuilder = struct {
 
     pub fn init(alloc: std.mem.Allocator, parser: *ParserModule.Parser, yy_ec: *const [256]u8) !NFABuilder {
         return .{
-            .state_list = try std.ArrayListUnmanaged(*State).initCapacity(alloc, 10),
+            .state_list = try std.ArrayListUnmanaged(*State).initCapacity(alloc, 1),
             .alloc = alloc,
             .parser = parser,
             .yy_ec = yy_ec,
         };
+    }
+
+    pub fn initEmpty(alloc: std.mem.Allocator) !NFA {
+        var builder = NFABuilder {
+            .alloc = alloc,
+            .state_list = try std.ArrayListUnmanaged(*State).initCapacity(alloc, 1),
+            .parser = undefined,
+            .yy_ec = undefined,
+        };
+
+        const dummy = try builder.makeState(0);
+        return NFA {.start = dummy, .accept = dummy };
     }
 
     pub fn deinit(self: *NFABuilder) void {
@@ -380,21 +339,21 @@ pub const NFABuilder = struct {
     const DFAFragment = struct {
         nfa: NFA,
         acceptList: []DFA.AcceptState,
-        sc: usize,
+        sc: usize = 0,
     };
 
     pub fn merge(
         self: *NFABuilder,
         NFAs: []NFA, lexParser: LexParser
     ) !struct { 
-        ArrayList(?DFAFragment),
-        ArrayList(?DFAFragment),
+        ArrayList(DFAFragment),
+        ArrayList(DFAFragment),
     } {
 
-        var merged_NFAs = ArrayList(?DFAFragment).init(self.alloc);
+        var merged_NFAs = ArrayList(DFAFragment).init(self.alloc);
         errdefer merged_NFAs.deinit();
 
-        var bol_NFAs = ArrayList(?DFAFragment).init(self.alloc);
+        var bol_NFAs = ArrayList(DFAFragment).init(self.alloc);
         errdefer bol_NFAs.deinit();
 
         var acceptList = ArrayList(DFA.AcceptState).init(self.alloc);
@@ -404,41 +363,10 @@ pub const NFABuilder = struct {
         errdefer bol_acceptList.deinit();
 
         self.next_id += 1;
-        var start, var bol_start = .{ try self.makeState(0), try self.makeState(0) };
-        // First iteration to fill rules that are active in INITIAL sc
-        for (NFAs, lexParser.rules.items, 0..) |inner, rule, it| {
-            if (rule.sc.items.len == 0) {
-                if (inner.matchStart == false) {
-                    std.debug.print("[NORMAL] Pushing rule: {s}\n", .{rule.regex});
-                    try start.transitions.append(.{ .symbol = .{ .epsilon = {} }, .to = inner.start});
-                    try acceptList.append(.{ .state = inner.accept, .priority = it });
-                } else {
-                    std.debug.print("[BOL] Pushing rule: {s}\n", .{rule.regex});
-                    try bol_start.transitions.append(.{ .symbol = .{ .epsilon = {} }, .to = inner.start});
-                    try bol_acceptList.append(.{ .state = inner.accept, .priority = it });
-                }
-            }
-        }
-        if (acceptList.items.len != 0) {
-            try merged_NFAs.append(DFAFragment{
-                .nfa = .{ .start = start, .accept = NFAs[0].accept },
-                .acceptList = try acceptList.toOwnedSlice(),
-                .sc = 0,
-            });
-        } else { try merged_NFAs.append(null); }
-        if (bol_acceptList.items.len != 0) {
-            try bol_NFAs.append(DFAFragment{
-                .nfa = .{ .start = bol_start, .accept = NFAs[0].accept },
-                .acceptList = try bol_acceptList.toOwnedSlice(),
-                .sc = 0,
-            });
-        } else { try bol_NFAs.append(null); }
-
-        for (lexParser.definitions.startConditions.data.items, 1..) |sc, scId| {
-            start, bol_start = .{ try self.makeState(0), try self.makeState(0) };
+        for (lexParser.definitions.startConditions.data.items, 0..) |sc, scId| {
+            var start, var bol_start = .{ try self.makeState(0), try self.makeState(0) };
             for (NFAs, lexParser.rules.items, 0..) |inner, rule, it| {
                 const found = blk: {
-                    if (inner.matchStart == true) break: blk false;
                     if (sc.type == .Inclusive and rule.sc.items.len == 0) break: blk true;
                     for (rule.sc.items) |c| if (std.mem.eql(u8, c.name, sc.name)) break: blk true;
                     break :blk false;
@@ -460,14 +388,26 @@ pub const NFABuilder = struct {
                     .acceptList = try acceptList.toOwnedSlice(),
                     .sc = scId,
                 });
-            } else { try merged_NFAs.append(null); }
+            } else { 
+                try merged_NFAs.append(.{ 
+                    .nfa = .{ .start = start, .accept = start },
+                    .acceptList = try acceptList.toOwnedSlice(),
+                    .sc = scId 
+                }); 
+            }
             if (bol_acceptList.items.len != 0) {
                 try bol_NFAs.append(DFAFragment{
                     .nfa = .{ .start = bol_start, .accept = NFAs[0].accept },
                     .acceptList = try bol_acceptList.toOwnedSlice(),
                     .sc = scId,
                 });
-            } else { try bol_NFAs.append(null); }
+            } else { 
+                try bol_NFAs.append(.{ 
+                    .nfa = .{ .start = bol_start, .accept = bol_start },
+                    .acceptList = try bol_acceptList.toOwnedSlice(),
+                    .sc = scId,
+                }); 
+            }
         }
 
         return .{

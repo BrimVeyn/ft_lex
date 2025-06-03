@@ -93,7 +93,9 @@ fn stringifyClassSet(
 
             if (c == '"') {
                 try writer.writeAll("\\\"");
-            }else if (std.ascii.isPrint(c)) {
+            } else if (c == '\\') {
+                try writer.writeAll("\\\\");
+            } else if (std.ascii.isPrint(c)) {
                 try writer.print("{c}", .{c});
             } else {
                 try writer.print("\\x{X:0>2}", .{c});

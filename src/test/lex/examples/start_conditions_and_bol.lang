@@ -1,0 +1,11 @@
+start
+123 abc
+"hello world"
+"unterminated
+start
+/*
+This is a comment
+*/
+switch
+inside_string \" end
+start
