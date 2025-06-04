@@ -4,6 +4,7 @@ const ArrayListUnmanaged    = std.ArrayListUnmanaged;
 const stderr                = std.io.getStdErr();
 
 const NFAModule             = @import("NFA.zig");
+const DFAFragment           = NFAModule.NFABuilder.DFAFragment;
 const State                 = NFAModule.State;
 const Transition            = NFAModule.Transition;
 const NFA                   = NFAModule.NFA;
@@ -13,6 +14,7 @@ const DFADump               = @import("DFADump.zig");
 const DFAMinimizer          = @import("DFA_minimizer.zig");
 const Partition             = DFAMinimizer.Partition;
 
+const EC                    = @import("EquivalenceClasses.zig");
 
 const DFATransition = struct {
     symbol: Symbol,
@@ -104,7 +106,7 @@ pub const DFA = struct {
         try dfa.subset_construction();
         try dfa.minimize();
         //HACK: The compression in unnecessary here and for debug purpose only
-        try dfa.compress();
+        // try dfa.compress();
 
         return dfa;
     }
@@ -319,20 +321,46 @@ pub const DFA = struct {
         }
     }
 
-
     pub const DFA_SC = struct {
         dfa: DFA,
         sc: usize,
     };
 
-
     pub const minimize = DFAMinimizer.minimize;
 
-    pub fn merge(
-        DFAs: ArrayListUnmanaged(DFA_SC),
-        bolDFAs: ArrayListUnmanaged(DFA_SC),
-    ) !DFA {
+    pub fn buildAndMergeFromNFAs(
+        alloc: std.mem.Allocator,
+        mergedNFAs: ArrayList(DFAFragment),
+        bolMergedNFAs: ArrayList(DFAFragment),
+        ec: EC,
+    ) !struct {
+        DFA,
+        ArrayListUnmanaged(DFA_SC),
+        ArrayListUnmanaged(DFA_SC),
+    } {
+        var DFAs = try ArrayListUnmanaged(DFA_SC).initCapacity(alloc, mergedNFAs.items.len);
+        var bol_DFAs = try ArrayListUnmanaged(DFA_SC).initCapacity(alloc, 1);
 
+        for (mergedNFAs.items, 0..) |nfa, it| {
+            _ = it;
+            // std.debug.print("[NORMAL] DFA {d}\n\n", .{it});
+            const dfa = try DFA.buildFromNFA(alloc, nfa.nfa, nfa.acceptList, ec.maxEc);
+            try DFAs.append(alloc, .{ .dfa = dfa, .sc = nfa.sc });
+        }
+
+        for (bolMergedNFAs.items, 0..) |nfa, it| {
+            _ = it;
+            // std.debug.print("[BOL] DFA {d}\n\n", .{it});
+            // std.debug.print("{s}\n", .{try nfa.nfa.stringify(alloc)});
+            const dfa = try DFA.buildFromNFA(alloc, nfa.nfa, nfa.acceptList, ec.maxEc);
+            try bol_DFAs.append(alloc, .{ .dfa = dfa, .sc = nfa.sc });
+        }
+
+        const finalDfa = try merge(DFAs, bol_DFAs);
+        return .{ finalDfa, DFAs, bol_DFAs };
+    }
+
+    pub fn merge(DFAs: ArrayListUnmanaged(DFA_SC), bolDFAs: ArrayListUnmanaged(DFA_SC)) !DFA {
         var merged = DFA {
             .alloc = DFAs.items[0].dfa.alloc,
             .yy_ec_highest = DFAs.items[0].dfa.yy_ec_highest,

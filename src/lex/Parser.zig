@@ -251,7 +251,7 @@ fn parseDefinitions(self: *LexParser) !void {
         }
     }
     self.expandDefinitions() catch |e| return self.logError(e);
-    std.debug.print("{}\n", .{self.definitions});
+    // std.debug.print("{}\n", .{self.definitions});
 }
 
 fn extractStartConditions(self: *LexParser) !void {
@@ -266,7 +266,7 @@ fn extractStartConditions(self: *LexParser) !void {
 
             for (self.definitions.startConditions.data.items) |sc| {
                 if (std.mem.startsWith(u8, r.regex[outer_it..], sc.name)) {
-                    std.debug.print("Matched with: {s}\n", .{sc.name});
+                    // std.debug.print("Matched with: {s}\n", .{sc.name});
                     try r.sc.append(sc);
                     outer_it += sc.name.len;
                     continue :outer;
@@ -274,11 +274,6 @@ fn extractStartConditions(self: *LexParser) !void {
             }
             return error.InvalidStartCondition;
         }
-
-        for (r.sc.items) |some| {
-            std.debug.print("{}\n", .{some});
-        }
-
     }
 }
 
@@ -302,7 +297,7 @@ fn parseRules(self: *LexParser) !void {
     self.expandRules() catch |e| return self.logError(e);
     self.extractStartConditions() catch |e| return self.logError(e);
 
-    for (self.rules.items) |item| std.debug.print("{}\n", .{item});
+    // for (self.rules.items) |item| std.debug.print("{}\n", .{item});
 }
 
 fn parseUserSubroutines(self: *LexParser) !void {

@@ -25,21 +25,23 @@ const Graph             = @import("regex/Graph.zig");
 const EC                = @import("regex/EquivalenceClasses.zig");
 const LexParser         = @import("lex/Parser.zig");
 
-const Printer           = @import("lex/Printer.zig");
+const Printer           = @import("lex/Printer/Printer.zig");
 
 comptime {
     _ = @import("test/regex/Tokenizer.zig");
     _ = @import("test/regex/Parser.zig");
     _ = @import("test/regex/NFAs.zig");
-    _ = @import("test/lex/Parser.zig");
+    _ = @import("test/lex/Compression.zig");
+    _ = @import("test/lex/Comparison.zig");
 }
 
 const   BUF_SIZE: usize = 4096;
 
 pub const LexOptions = struct {
-    t: bool = false,
-    n: bool = false,
-    v: bool = false,
+    inputName: []const u8  =  "stdin",
+    t: bool                =  false,
+    n: bool                =  false,
+    v: bool                =  false,
 };
 
 fn parseOptions(args: [][:0]u8) !struct {LexOptions, usize} {
@@ -87,7 +89,7 @@ pub fn main() !u8 {
     const args = try std.process.argsAlloc(alloc);
     defer std.process.argsFree(alloc, args);
 
-    const options, const arg_it = parseOptions(args) catch {
+    var options, const arg_it = parseOptions(args) catch {
         print("Usage: ft_lex [-t] [-n|-v] [file...]\n", .{});
         return 1;
     };
@@ -95,6 +97,7 @@ pub fn main() !u8 {
     if (args.len == arg_it) {
         @panic("Not yet implemtented");
     } else {
+        options.inputName = args[arg_it];
         var lexParser = try LexParser.init(alloc, args[arg_it]);
         defer lexParser.deinit();
 
@@ -133,12 +136,9 @@ pub fn main() !u8 {
                 std.log.err("NFA: {!}", .{e});
                 continue;
             };
-            // std.debug.print("{s}\n", .{try nfa.stringify(alloc)});
             try nfaList.append(nfa);
         }
 
-        //The merge process will create as many NFA as there are active start conditions,
-        //returning []NFA and [][]DFA.Acceptstate
         const mergedNFAs, const bolMergedNFAs = try nfaBuilder.merge(nfaList.items, lexParser);
         defer {
             for (mergedNFAs.items) |m| alloc.free(m.acceptList);
@@ -147,32 +147,14 @@ pub fn main() !u8 {
             bolMergedNFAs.deinit();
         }
 
-        var DFAs = try std.ArrayListUnmanaged(DFA.DFA_SC).initCapacity(alloc, mergedNFAs.items.len);
-        var bol_DFAs = try std.ArrayListUnmanaged(DFA.DFA_SC).initCapacity(alloc, 1);
+        var finalDfa, var DFAs, var bol_DFAs = try DFA.buildAndMergeFromNFAs(alloc, mergedNFAs, bolMergedNFAs, ec);
         defer {
             for (DFAs.items) |*dfa_sc| dfa_sc.dfa.deinit();
             for (bol_DFAs.items) |*dfa_sc| dfa_sc.dfa.deinit();
             DFAs.deinit(alloc);
             bol_DFAs.deinit(alloc);
+            finalDfa.mergedDeinit();
         }
-
-        for (mergedNFAs.items, 0..) |nfa, it| {
-            std.debug.print("[NORMAL] DFA {d}\n\n", .{it});
-            const dfa = try DFA.buildFromNFA(alloc, nfa.nfa, nfa.acceptList, ec.maxEc);
-            try DFAs.append(alloc, .{ .dfa = dfa, .sc = nfa.sc });
-        }
-
-        for (bolMergedNFAs.items, 0..) |nfa, it| {
-            std.debug.print("[BOL] DFA {d}\n\n", .{it});
-            // std.debug.print("{s}\n", .{try nfa.nfa.stringify(alloc)});
-            const dfa = try DFA.buildFromNFA(alloc, nfa.nfa, nfa.acceptList, ec.maxEc);
-            try bol_DFAs.append(alloc, .{ .dfa = dfa, .sc = nfa.sc });
-        }
-
-        var finalDfa = try DFA.merge(DFAs, bol_DFAs);
-        defer finalDfa.mergedDeinit();
-
-        // DFADump.transTableDump(finalDfa.transTable.?);
 
         for (DFAs.items, mergedNFAs.items, 0..) |dfa, nfa, i| {
             const filename = try std.fmt.allocPrint(alloc, "test_{d}.graph", .{i});
@@ -202,6 +184,6 @@ pub fn main() !u8 {
     return 0;
 }
 
-test "dummy" {
-    try std.testing.expect(1 == 1);
-}
+// test "dummy" {
+//     try std.testing.expect(1 == 1);
+// }

@@ -1,0 +1,22 @@
+#define MAX 100
+#include utils.h
+
+start_block
+do something
+do process_data
+end_block
+
+"hello"
+"escape:\n\t\\\""
+
+int counter = 42;
+
+my_label:
+
+variableName
+another_variable123
+12345
+
+/* This is a
+multiline comment */
+

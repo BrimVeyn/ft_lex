@@ -336,7 +336,7 @@ pub const NFABuilder = struct {
         };
     }
 
-    const DFAFragment = struct {
+    pub const DFAFragment = struct {
         nfa: NFA,
         acceptList: []DFA.AcceptState,
         sc: usize = 0,
