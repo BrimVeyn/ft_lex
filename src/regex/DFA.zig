@@ -250,41 +250,10 @@ pub const DFA = struct {
             .transitions = std.ArrayList(DFATransition).init(self.alloc),
             .accept_id = self.getAcceptingRule(start_closure),
         });
-
         // self.epsilon_cache = std.AutoHashMap(StateSet, StateSet).init(self.alloc);
         // defer self.epsilon_cache.deinit();
 
         while (queue.pop()) |current_set| {
-            // try printStateSet(current_set);
-            // for (0..256) |s| {
-            //     const symbol: u8 = @intCast(s);
-            //     var gotos = try self.move(current_set, symbol);
-            //     defer gotos.deinit();
-            //
-            //     if (gotos.count() == 0) 
-            //     continue;
-            //     var closure = try self.epsilon_closure(gotos);
-            //
-            //     if (!self.data.contains(closure)) {
-            //         try self.data.put(closure, .{
-            //             .transitions = std.ArrayList(DFATransition).init(self.alloc),
-            //             .accept_id = self.getAcceptingRule(closure),
-            //         });
-            //         try queue.append(closure);
-            //
-            //         const maybe_value = self.data.getPtr(current_set);
-            //         if (maybe_value) |value| {
-            //             try value.transitions.append(.{ .symbol = .{ .char = symbol }, .to = closure });
-            //         } else unreachable;
-            //     } else {
-            //         const maybe_value = self.data.getPtr(current_set);
-            //         const closure_ptr = self.data.getKeyPtr(closure);
-            //         if (maybe_value) |value| {
-            //             try value.transitions.append(.{ .symbol = .{ .char = symbol }, .to = closure_ptr.?.* });
-            //         } else unreachable;
-            //         closure.deinit();
-            //     }
-            // }
             //NOTE: Begin at id 1 since 0 is reserved for \x00
             for (1..self.yy_ec_highest + 1) |class_id| {
                 const ec: u8 = @intCast(class_id);
@@ -321,9 +290,11 @@ pub const DFA = struct {
         }
     }
 
+    //TODO: remove this strcucture and store sc, and tc fields in DFA
     pub const DFA_SC = struct {
         dfa: DFA,
         sc: usize,
+        trailingContextRuleId: ?usize = null,
     };
 
     pub const minimize = DFAMinimizer.minimize;
@@ -332,14 +303,22 @@ pub const DFA = struct {
         alloc: std.mem.Allocator,
         mergedNFAs: ArrayList(DFAFragment),
         bolMergedNFAs: ArrayList(DFAFragment),
+        tcNFAs: ArrayList(DFAFragment),
         ec: EC,
     ) !struct {
         DFA,
         ArrayListUnmanaged(DFA_SC),
         ArrayListUnmanaged(DFA_SC),
+        ArrayListUnmanaged(DFA_SC),
     } {
         var DFAs = try ArrayListUnmanaged(DFA_SC).initCapacity(alloc, mergedNFAs.items.len);
         var bol_DFAs = try ArrayListUnmanaged(DFA_SC).initCapacity(alloc, 1);
+        var tc_DFAs = try ArrayListUnmanaged(DFA_SC).initCapacity(alloc, 1);
+        errdefer {
+            DFAs.deinit(alloc);
+            bol_DFAs.deinit(alloc);
+            tc_DFAs.deinit(alloc);
+        }
 
         for (mergedNFAs.items, 0..) |nfa, it| {
             _ = it;
@@ -356,11 +335,20 @@ pub const DFA = struct {
             try bol_DFAs.append(alloc, .{ .dfa = dfa, .sc = nfa.sc });
         }
 
-        const finalDfa = try merge(DFAs, bol_DFAs);
-        return .{ finalDfa, DFAs, bol_DFAs };
+        for (tcNFAs.items) |nfa| {
+            const dfa = try DFA.buildFromNFA(alloc, nfa.nfa, nfa.acceptList, ec.maxEc);
+            try tc_DFAs.append(alloc, .{ .dfa = dfa, .sc = nfa.sc, .trailingContextRuleId = nfa.trailingContextRuleId.? });
+        }
+
+        const finalDfa = try merge(DFAs, bol_DFAs, tc_DFAs);
+        return .{ finalDfa, DFAs, bol_DFAs, tc_DFAs };
     }
 
-    pub fn merge(DFAs: ArrayListUnmanaged(DFA_SC), bolDFAs: ArrayListUnmanaged(DFA_SC)) !DFA {
+    pub fn merge(
+        DFAs: ArrayListUnmanaged(DFA_SC),
+        bolDFAs: ArrayListUnmanaged(DFA_SC),
+        tcDFAs: ArrayListUnmanaged(DFA_SC),
+    ) !DFA {
         var merged = DFA {
             .alloc = DFAs.items[0].dfa.alloc,
             .yy_ec_highest = DFAs.items[0].dfa.yy_ec_highest,
@@ -385,12 +373,9 @@ pub const DFA = struct {
             var bolRow = &dfa_sc.dfa.minimized.?.data.items[0];
 
             outer: for (dfaRow.signature.?.data.items) |transition| {
-                for (bolRow.signature.?.data.items, 0..) |bolTrans, it| {
-                    _ = it;
-                    if (Symbol.eql(transition.symbol, bolTrans.symbol)) {
-                        // _ = bolRow.signature.?.data.orderedRemove(it);
+                for (bolRow.signature.?.data.items) |bolTrans| {
+                    if (Symbol.eql(transition.symbol, bolTrans.symbol))
                         continue: outer;
-                    }
                 }
                 try bolRow.signature.?.append(transition);
             }
@@ -400,12 +385,16 @@ pub const DFA = struct {
             try minDfa.appendSlice(dfa_sc.dfa.minimized.?.data.items);
         }
 
+        for (tcDFAs.items) |tc_dfa| {
+            try acceptList.appendSlice(tc_dfa.dfa.accept_list);
+            try minDfa.appendSlice(tc_dfa.dfa.minimized.?.data.items);
+        }
+
         merged.minimized = minDfa;
         merged.accept_list = try acceptList.toOwnedSlice();
         merged.yy_accept = try merged.getAcceptTable();
 
         try merged.compress();
-
         return merged;
     }
 

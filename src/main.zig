@@ -113,6 +113,7 @@ pub fn main() !u8 {
 
         for (lexParser.rules.items) |rule| {
             regexParser.loadSlice(rule.regex);
+            regexParser.hasSeenTrailingContext = false;
             // std.debug.print("Parsing regex: {s}", .{rule.regex});
             const head = regexParser.parse() catch |e| {
                 std.log.err("\"{s}\": {!}", .{rule.regex, e});
@@ -139,20 +140,22 @@ pub fn main() !u8 {
             try nfaList.append(nfa);
         }
 
-        const mergedNFAs, const bolMergedNFAs = try nfaBuilder.merge(nfaList.items, lexParser);
+        const mergedNFAs, const bolMergedNFAs, const tcNFAs = try nfaBuilder.merge(nfaList.items, lexParser);
         defer {
             for (mergedNFAs.items) |m| alloc.free(m.acceptList);
             for (bolMergedNFAs.items) |m| alloc.free(m.acceptList);
-            mergedNFAs.deinit();
-            bolMergedNFAs.deinit();
+            for (tcNFAs.items) |m| alloc.free(m.acceptList);
+            mergedNFAs.deinit(); bolMergedNFAs.deinit(); tcNFAs.deinit();
         }
 
-        var finalDfa, var DFAs, var bol_DFAs = try DFA.buildAndMergeFromNFAs(alloc, mergedNFAs, bolMergedNFAs, ec);
+        var finalDfa, var DFAs, var bol_DFAs, var tc_DFAs = 
+            try DFA.buildAndMergeFromNFAs(alloc, mergedNFAs, bolMergedNFAs, tcNFAs, ec);
+
         defer {
             for (DFAs.items) |*dfa_sc| dfa_sc.dfa.deinit();
             for (bol_DFAs.items) |*dfa_sc| dfa_sc.dfa.deinit();
-            DFAs.deinit(alloc);
-            bol_DFAs.deinit(alloc);
+            for (tc_DFAs.items) |*dfa_sc| dfa_sc.dfa.deinit();
+            DFAs.deinit(alloc); bol_DFAs.deinit(alloc); tc_DFAs.deinit(alloc);
             finalDfa.mergedDeinit();
         }
 
@@ -169,16 +172,16 @@ pub fn main() !u8 {
         defer outFile.close();
         Graph.dotFormat(lexParser, mergedNFAs.items[0].nfa, finalDfa, &ec.yy_ec, outFile.writer());
 
+        // std.debug.print("UNCOMPRESSED\n", .{});
+        // DFADump.transTableDump(finalDfa.transTable.?);
+
         std.log.info("Compressed eql: {}", .{ try finalDfa.compareTTToCTT() });
         std.log.info("Uncompressed size: {d}", .{finalDfa.transTable.?.items.len * ec.maxEc});
         std.log.info("Compressed size: {d}", .{(finalDfa.cTransTable.?.base.len * 2) + (finalDfa.cTransTable.?.next.len * 2)});
         try Printer.print(
-            ec, 
-            DFAs,
-            bol_DFAs,
-            finalDfa,
-            lexParser,
-            options
+            ec, DFAs,
+            bol_DFAs, tc_DFAs, finalDfa,
+            lexParser, options
         );
     }
     return 0;

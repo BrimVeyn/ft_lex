@@ -42,8 +42,3 @@
 .|\n ; // ignore everything else
 
 %%
-
-int main(void) {
-    yylex();
-    return 0;
-}

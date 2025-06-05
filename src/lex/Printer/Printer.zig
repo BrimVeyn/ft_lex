@@ -13,42 +13,30 @@ const Templates           =  @import("Templates.zig");
 
 const MAX_ITEM_PER_ROW: usize = 10;
 
-fn printTable(comptime T: type, writer: anytype, table: []T, head: []const u8) !void {
-    try writer.print("static const int16_t yy_{s}[{d}] = {{", .{head, table.len});
-
-    for (table, 0..) |item, it| {
-        if (it % MAX_ITEM_PER_ROW == 0) {
-            _ = try writer.write("\n");
-        }
-        try writer.print("{d:5}, ", .{item});
-    }
-    _ = try writer.write("\n};\n\n");
-}
-
-
 const actionsHead =
-\\static inline void yy_action(int accept_id) {
-\\  switch (accept_id) {
+\\static inline int yy_action(int accept_id) {
+\\    switch (accept_id) {
 \\
 ;
 
 const actionsTail =
-\\      default:
-\\          fprintf(stderr, "Unknown action id: %d\n", accept_id);
-\\          break;
-\\      }
+\\        default:
+\\            fprintf(stderr, "Unknown action id: %d\n", accept_id);
+\\            break;
+\\        }
+\\    return 0;
 \\}
 \\
 ;
 
 const ruleHead =
-\\      case {d}:
+\\        case {d}:
 \\
 ;
 
 const ruleTail =
 \\
-\\          break;
+\\        break;
 \\
 ;
 
@@ -85,10 +73,42 @@ fn printSCEnum(
     _ = try writer.write("};\n\n");
 }
 
-fn printTables(dfa: DFA, ec: EC, writer: anytype) !void {
+fn printyy_acclist(dfa: DFA, tc_dfa: ArrayListUnmanaged(DFA.DFA_SC), lexParser: LexParser, writer: std.fs.File.Writer) !void {
+    var acclist = try dfa.alloc.alloc(i16, lexParser.rules.items.len);
+    defer dfa.alloc.free(acclist);
+    @memset(acclist, 0);
+
+    for (tc_dfa.items) |tc| {
+        acclist[tc.trailingContextRuleId.?] = @intCast(tc.dfa.offset);
+    }
+
+    try writer.print("static const int16_t yy_acclist[{d}] = {{", .{lexParser.rules.items.len});
+    for (acclist, 0..) |item, it| {
+        if (it % MAX_ITEM_PER_ROW == 0) {
+            _ = try writer.write("\n");
+        }
+        try writer.print("{d:5}, ", .{item});
+    }
+    _ = try writer.write("\n};\n\n");
+}
+
+fn printTable(comptime T: type, writer: anytype, table: []T, head: []const u8) !void {
+    try writer.print("static const int16_t yy_{s}[{d}] = {{", .{head, table.len});
+
+    for (table, 0..) |item, it| {
+        if (it % MAX_ITEM_PER_ROW == 0) {
+            _ = try writer.write("\n");
+        }
+        try writer.print("{d:5}, ", .{item});
+    }
+    _ = try writer.write("\n};\n\n");
+}
+
+fn printTables(dfa: DFA, tc_dfas: ArrayListUnmanaged(DFA.DFA_SC), lexParser: LexParser, ec: EC, writer: anytype) !void {
     _ = try writer.write("#include <stdint.h>\n");
     _ = try writer.write("#include <stdio.h>\n");
     _ = try writer.write("#include <string.h>\n\n\n");
+    try printyy_acclist(dfa, tc_dfas, lexParser, writer);
     try printTable(i16, writer, dfa.yy_accept.?, "accept");
     try printTable(u8, writer, @constCast((ec.yy_ec)[0..]), "ec");
     try printTable(i16, writer, dfa.cTransTable.?.base, "base");
@@ -116,6 +136,7 @@ pub fn print(
     ec: EC,
     dfas: ArrayListUnmanaged(DFA.DFA_SC),
     bol_dfas: ArrayListUnmanaged(DFA.DFA_SC),
+    tc_dfas: ArrayListUnmanaged(DFA.DFA_SC),
     dfa: DFA,
     lexParser: LexParser,
     opts: LexOptions
@@ -128,7 +149,7 @@ pub fn print(
 
     const writer = file.writer();
 
-    try printTables(dfa, ec, writer);
+    try printTables(dfa, tc_dfas, lexParser, ec, writer);
     try printUserCode(lexParser, opts, writer);
     try printSCEnum(lexParser, dfas, bol_dfas, writer);
     try printBody(lexParser, writer);
@@ -146,12 +167,13 @@ pub fn printTo(
     ec: EC,
     dfas: ArrayListUnmanaged(DFA.DFA_SC),
     bol_dfas: ArrayListUnmanaged(DFA.DFA_SC),
+    tc_dfas: ArrayListUnmanaged(DFA.DFA_SC),
     dfa: DFA,
     lexParser: LexParser,
     opts: LexOptions,
     writer: anytype,
 ) !void {
-    try printTables(dfa, ec, writer);
+    try printTables(dfa, tc_dfas, lexParser, ec, writer);
     try printUserCode(lexParser, opts, writer);
     try printSCEnum(lexParser, dfas, bol_dfas, writer);
     try printBody(lexParser, writer);

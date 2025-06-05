@@ -336,10 +336,12 @@ pub const NFABuilder = struct {
         };
     }
 
+    //TODO: Remove this structure and add the fields inside the NFA struct
     pub const DFAFragment = struct {
         nfa: NFA,
         acceptList: []DFA.AcceptState,
         sc: usize = 0,
+        trailingContextRuleId: ?usize = null,
     };
 
     pub fn merge(
@@ -348,19 +350,40 @@ pub const NFABuilder = struct {
     ) !struct { 
         ArrayList(DFAFragment),
         ArrayList(DFAFragment),
+        ArrayList(DFAFragment),
     } {
 
         var merged_NFAs = ArrayList(DFAFragment).init(self.alloc);
-        errdefer merged_NFAs.deinit();
-
         var bol_NFAs = ArrayList(DFAFragment).init(self.alloc);
-        errdefer bol_NFAs.deinit();
-
+        var tc_NFAs = ArrayList(DFAFragment).init(self.alloc);
         var acceptList = ArrayList(DFA.AcceptState).init(self.alloc);
-        errdefer acceptList.deinit();
-
         var bol_acceptList = ArrayList(DFA.AcceptState).init(self.alloc);
-        errdefer bol_acceptList.deinit();
+        var tc_acceptList = ArrayList(DFA.AcceptState).init(self.alloc);
+        errdefer {
+            merged_NFAs.deinit(); bol_NFAs.deinit();
+            acceptList.deinit(); bol_acceptList.deinit();
+        }
+
+        for (NFAs, 0..) |inner, it| {
+            if (inner.lookAhead) |tc| {
+                // std.debug.print("{d}: Has trailing context\n", .{it});
+                // std.debug.print("{s}\n", .{ try tc.stringify(self.alloc)});
+                //TODO: Determine if the trailing context and its rule are of arbitratry length.
+                //If not we can ommit the backtracking part of the matcher and add a precomputed backtracking in
+                //the action associated with the rule.
+                var start = try self.makeState(0);
+                try start.transitions.append(.{ .symbol = .{ .epsilon = {} }, .to = tc.start});
+                try tc_acceptList.append(.{ .state = tc.accept, .priority = it });
+                try tc_NFAs.append(.{
+                    .nfa = .{
+                        .start = start,
+                        .accept = NFAs[0].accept
+                    },
+                    .acceptList = try tc_acceptList.toOwnedSlice(),
+                    .trailingContextRuleId = it,
+                });
+            }
+        }
 
         self.next_id += 1;
         for (lexParser.definitions.startConditions.data.items, 0..) |sc, scId| {
@@ -382,37 +405,29 @@ pub const NFABuilder = struct {
                 }
             }
 
-            if (acceptList.items.len != 0) {
-                try merged_NFAs.append(DFAFragment{
-                    .nfa = .{ .start = start, .accept = NFAs[0].accept },
-                    .acceptList = try acceptList.toOwnedSlice(),
-                    .sc = scId,
-                });
-            } else { 
-                try merged_NFAs.append(.{ 
-                    .nfa = .{ .start = start, .accept = start },
-                    .acceptList = try acceptList.toOwnedSlice(),
-                    .sc = scId 
-                }); 
-            }
-            if (bol_acceptList.items.len != 0) {
-                try bol_NFAs.append(DFAFragment{
-                    .nfa = .{ .start = bol_start, .accept = NFAs[0].accept },
-                    .acceptList = try bol_acceptList.toOwnedSlice(),
-                    .sc = scId,
-                });
-            } else { 
-                try bol_NFAs.append(.{ 
-                    .nfa = .{ .start = bol_start, .accept = bol_start },
-                    .acceptList = try bol_acceptList.toOwnedSlice(),
-                    .sc = scId,
-                }); 
-            }
+            try merged_NFAs.append(DFAFragment{
+                .nfa = .{ 
+                    .start = start,
+                    .accept = if (acceptList.items.len != 0) NFAs[0].accept else start,
+                },
+                .acceptList = try acceptList.toOwnedSlice(),
+                .sc = scId,
+            });
+
+            try bol_NFAs.append(DFAFragment{
+                .nfa = .{ 
+                    .start = bol_start,
+                    .accept = if (bol_acceptList.items.len != 0) NFAs[0].accept else bol_start,
+                },
+                .acceptList = try bol_acceptList.toOwnedSlice(),
+                .sc = scId,
+            });
         }
 
         return .{
             merged_NFAs,
             bol_NFAs,
+            tc_NFAs,
         };
     }
 };

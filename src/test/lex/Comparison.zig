@@ -65,24 +65,25 @@ fn produceFtLexOutput(alloc: std.mem.Allocator, lFile: []const u8, langFile: []c
         try nfaList.append(nfa);
     }
 
-    const mergedNFAs, const bolMergedNFAs = try nfaBuilder.merge(nfaList.items, lexParser);
+    const mergedNFAs, const bolMergedNFAs, const tcNFAs = try nfaBuilder.merge(nfaList.items, lexParser);
     defer {
         for (mergedNFAs.items) |m| alloc.free(m.acceptList);
         for (bolMergedNFAs.items) |m| alloc.free(m.acceptList);
-        mergedNFAs.deinit();
-        bolMergedNFAs.deinit();
+        for (tcNFAs.items) |m| alloc.free(m.acceptList);
+        mergedNFAs.deinit(); bolMergedNFAs.deinit(); tcNFAs.deinit();
     }
 
-    var finalDfa, var DFAs, var bol_DFAs = try DFA.buildAndMergeFromNFAs(alloc, mergedNFAs, bolMergedNFAs, ec);
+    var finalDfa, var DFAs, var bol_DFAs, var tc_DFAs = 
+    try DFA.buildAndMergeFromNFAs(alloc, mergedNFAs, bolMergedNFAs, tcNFAs, ec);
+
     defer {
         for (DFAs.items) |*dfa_sc| dfa_sc.dfa.deinit();
         for (bol_DFAs.items) |*dfa_sc| dfa_sc.dfa.deinit();
-        DFAs.deinit(alloc);
-        bol_DFAs.deinit(alloc);
+        for (tc_DFAs.items) |*dfa_sc| dfa_sc.dfa.deinit();
+        DFAs.deinit(alloc); bol_DFAs.deinit(alloc); tc_DFAs.deinit(alloc);
         finalDfa.mergedDeinit();
     }
     
-    std.fs.cwd().makeDir("src/test/lex/outputs") catch {};
     var buffer: [512]u8 = .{0} ** 512;
     var stream = std.io.fixedBufferStream(&buffer);
     const sWriter = stream.writer();
@@ -92,7 +93,7 @@ fn produceFtLexOutput(alloc: std.mem.Allocator, lFile: []const u8, langFile: []c
     var file = try std.fs.cwd().createFile(buffer[0..stream.pos], .{});
     defer file.close();
 
-    try Printer.printTo(ec, DFAs, bol_DFAs, finalDfa, lexParser, .{}, file.writer());
+    try Printer.printTo(ec, DFAs, bol_DFAs, tc_DFAs, finalDfa, lexParser, .{}, file.writer());
 
     var argBuffer: [2048]u8 = .{0} ** 2048;
     var argStream = std.io.fixedBufferStream(&argBuffer);
@@ -116,7 +117,7 @@ fn produceFtLexOutput(alloc: std.mem.Allocator, lFile: []const u8, langFile: []c
     _ = try child.spawnAndWait();
 
     const term = try child.spawnAndWait();
-    try std.testing.expectEqual(term.Exited, 0);
+    try std.testing.expectEqual(0, term.Exited);
 }
 
 ///Runs flex, compiles its output file and run it on the langFile
@@ -153,7 +154,7 @@ fn produceFlexOutput(alloc: std.mem.Allocator, lFile: []const u8, langFile: []co
     _ = try child.spawnAndWait();
 
     const term = try child.spawnAndWait();
-    try std.testing.expectEqual(term.Exited, 0);
+    try std.testing.expectEqual(0, term.Exited);
 }
 
 ///Compares ft_lex's output to flex's output
@@ -165,10 +166,12 @@ fn produceFlexOutput(alloc: std.mem.Allocator, lFile: []const u8, langFile: []co
 fn compareOutput(lFile: []const u8, langFile: []const u8) !void {
     const alloc = std.testing.allocator;
 
+    std.fs.cwd().makeDir(outputDir) catch {};
+
     try produceFtLexOutput(alloc, lFile, langFile);
     try produceFlexOutput(alloc, lFile, langFile);
 
-    var argBuffer: [2048]u8 = .{0} ** 2048;
+    var argBuffer: [1024]u8 = .{0} ** 1024;
     var argStream = std.io.fixedBufferStream(&argBuffer);
     const argWriter = argStream.writer();
 
@@ -189,12 +192,40 @@ fn compareOutput(lFile: []const u8, langFile: []const u8) !void {
     _ = try child.spawnAndWait();
 
     const term = try child.spawnAndWait();
-    try std.testing.expectEqual(term.Exited, 0);
+    try std.testing.expectEqual(0, term.Exited);
 }
 
-test "Start conditions and achor start" {
+test "C like syntax" {
     try compareOutput(
         "src/test/lex/examples/c_like_syntax.l", 
-        "src/test/lex/examples/c_like.syntax.lang"
+        "src/test/lex/examples/c_like_syntax.lang"
+    );
+}
+
+test "Easy start conditions" {
+    try compareOutput(
+        "src/test/lex/examples/start_conditions.l", 
+        "src/test/lex/examples/start_conditions.lang"
+    );
+}
+
+test "Hard start conditions" {
+    try compareOutput(
+        "src/test/lex/examples/start_conditions_2.l", 
+        "src/test/lex/examples/start_conditions_2.lang"
+    );
+}
+
+test "Easy start conditions and bol" {
+    try compareOutput(
+        "src/test/lex/examples/start_conditions_and_bol.l", 
+        "src/test/lex/examples/start_conditions_and_bol.lang"
+    );
+}
+
+test "Hard start conditions and bol" {
+    try compareOutput(
+        "src/test/lex/examples/start_conditions_and_bol_2.l", 
+        "src/test/lex/examples/start_conditions_and_bol_2.lang"
     );
 }

@@ -50,6 +50,8 @@ pub const bodySecondPart = \\
 \\int yylex(void) {
 \\    BEGIN(INITIAL);
 \\
+\\    if (!yyin) yyin = stdin;
+\\    if (!yyout) yyout = stdout;
 \\    int yy_failed_at_bol = 0;
 \\
 \\    int i = 0;
@@ -138,16 +140,17 @@ pub const bodySecondPart = \\
 \\
 \\    return 0;
 \\}
+\\
 ;
 
 pub const defaultMain = \\
 \\int main(int ac, char *av[]) {
 \\    ++av; --ac;
-\\      if (ac > 0) {
-\\          yyin = fopen(*av, "r");
-\\      } else {
-\\          yyin = fopen("test.lang", "r");
-\\      }
+\\    if (ac > 0) {
+\\        yyin = fopen(*av, "r");
+\\    } else {
+\\        yyin = fopen("test.lang", "r");
+\\    }
 \\    yyout = stdout;
 \\    yylex();
 \\}
