@@ -96,19 +96,23 @@ classSet: std.AutoArrayHashMap(std.StaticBitSet(256), void),
 pub fn initWithSlice(alloc: std.mem.Allocator, input: []const u8) !Parser {
     var tokenizer = Tokenizer.init(input, .RegexExpStart);
     const first_token = tokenizer.next();
-    return .{
+    var parser = Parser {
         .tokenizer = tokenizer,
         .current = first_token,
         .pool = std.heap.MemoryPool(RegexNode).init(alloc),
         .classSet = std.AutoArrayHashMap(std.StaticBitSet(256), void).init(alloc),
     };
+    parser.fillLookupTables();
+    return parser;
 }
 
 pub fn init(alloc: std.mem.Allocator) !Parser {
-    return .{
+    var parser = Parser {
         .pool = std.heap.MemoryPool(RegexNode).init(alloc),
         .classSet = std.AutoArrayHashMap(std.StaticBitSet(256), void).init(alloc),
     };
+    parser.fillLookupTables();
+    return parser;
 }
 
 pub fn loadSlice(self: *Parser, slice: []u8) void {
@@ -199,11 +203,6 @@ pub fn parseExpr(self: *Parser, min_bp: BindingPower) ParserError!*RegexNode {
     return left;
 }
 
-pub fn parse(self: *Parser) !*RegexNode {
-    //INFO: We can't fill the lookup tables at comptime since this struct isn't itself comptime so we fill it before parsing starts.
-    //No need to refill it if we reuse the Parser
-    if (self.bp_lookup == null or self.nud_lookup == null or self.led_lookup == null) {
-        self.fillLookupTables();
-    }
+pub inline fn parse(self: *Parser) !*RegexNode {
     return self.parseExpr(.None);
 }

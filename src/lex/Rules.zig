@@ -8,6 +8,7 @@ pub const Rule = struct {
     regex: []u8,
     code: Definitions.CCode,
     sc: std.ArrayList(SCType) = undefined,
+    trailingContext: bool = false,
 
     pub fn init(alloc: std.mem.Allocator, regex: []u8, code: Definitions.CCode) Rule {
         return .{

@@ -74,15 +74,15 @@ fn printSCEnum(
 }
 
 fn printyy_acclist(dfa: DFA, tc_dfa: ArrayListUnmanaged(DFA.DFA_SC), lexParser: LexParser, writer: std.fs.File.Writer) !void {
-    var acclist = try dfa.alloc.alloc(i16, lexParser.rules.items.len);
+    var acclist = try dfa.alloc.alloc(i16, lexParser.rules.items.len + 1);
     defer dfa.alloc.free(acclist);
     @memset(acclist, 0);
 
     for (tc_dfa.items) |tc| {
-        acclist[tc.trailingContextRuleId.?] = @intCast(tc.dfa.offset);
+        acclist[tc.trailingContextRuleId.? + 1] = @intCast(tc.dfa.offset);
     }
 
-    try writer.print("static const int16_t yy_acclist[{d}] = {{", .{lexParser.rules.items.len});
+    try writer.print("static const int16_t yy_acclist[{d}] = {{", .{lexParser.rules.items.len + 1});
     for (acclist, 0..) |item, it| {
         if (it % MAX_ITEM_PER_ROW == 0) {
             _ = try writer.write("\n");
@@ -92,8 +92,8 @@ fn printyy_acclist(dfa: DFA, tc_dfa: ArrayListUnmanaged(DFA.DFA_SC), lexParser: 
     _ = try writer.write("\n};\n\n");
 }
 
-fn printTable(comptime T: type, writer: anytype, table: []T, head: []const u8) !void {
-    try writer.print("static const int16_t yy_{s}[{d}] = {{", .{head, table.len});
+fn printTable(comptime T: type, writer: anytype, table: []T, head: []const u8, typeLen: []const u8, sign: []const u8) !void {
+    try writer.print("static const {s}int{s}_t yy_{s}[{d}] = {{", .{sign, typeLen, head, table.len});
 
     for (table, 0..) |item, it| {
         if (it % MAX_ITEM_PER_ROW == 0) {
@@ -109,12 +109,12 @@ fn printTables(dfa: DFA, tc_dfas: ArrayListUnmanaged(DFA.DFA_SC), lexParser: Lex
     _ = try writer.write("#include <stdio.h>\n");
     _ = try writer.write("#include <string.h>\n\n\n");
     try printyy_acclist(dfa, tc_dfas, lexParser, writer);
-    try printTable(i16, writer, dfa.yy_accept.?, "accept");
-    try printTable(u8, writer, @constCast((ec.yy_ec)[0..]), "ec");
-    try printTable(i16, writer, dfa.cTransTable.?.base, "base");
-    try printTable(i16, writer, dfa.cTransTable.?.default, "default");
-    try printTable(i16, writer, dfa.cTransTable.?.next, "next");
-    try printTable(i16, writer, dfa.cTransTable.?.check, "check");
+    try printTable(i32, writer, dfa.yy_accept.?, "accept", "32", "");
+    try printTable(u8, writer, @constCast((ec.yy_ec)[0..]), "ec", "8", "u");
+    try printTable(i16, writer, dfa.cTransTable.?.base, "base", "16", "");
+    try printTable(i16, writer, dfa.cTransTable.?.default, "default", "16", "");
+    try printTable(i16, writer, dfa.cTransTable.?.next, "next", "16", "");
+    try printTable(i16, writer, dfa.cTransTable.?.check, "check", "16", "");
 }
 
 fn printUserCode(lexParser: LexParser, opts: LexOptions, writer: anytype) !void {

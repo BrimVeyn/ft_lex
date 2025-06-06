@@ -72,6 +72,7 @@ pub const NFA = struct {
 pub const NFABuilder = struct {
     state_list: std.ArrayListUnmanaged(*State),
     alloc: std.mem.Allocator,
+    tc_pool: std.heap.MemoryPool(NFA),
     next_id: StateId = 1,
     depth: usize = 0,
     //Parser is need to allocate more RegexNodes when its needed
@@ -81,22 +82,11 @@ pub const NFABuilder = struct {
     pub fn init(alloc: std.mem.Allocator, parser: *ParserModule.Parser, yy_ec: *const [256]u8) !NFABuilder {
         return .{
             .state_list = try std.ArrayListUnmanaged(*State).initCapacity(alloc, 1),
+            .tc_pool = std.heap.MemoryPool(NFA).init(alloc),
             .alloc = alloc,
             .parser = parser,
             .yy_ec = yy_ec,
         };
-    }
-
-    pub fn initEmpty(alloc: std.mem.Allocator) !NFA {
-        var builder = NFABuilder {
-            .alloc = alloc,
-            .state_list = try std.ArrayListUnmanaged(*State).initCapacity(alloc, 1),
-            .parser = undefined,
-            .yy_ec = undefined,
-        };
-
-        const dummy = try builder.makeState(0);
-        return NFA {.start = dummy, .accept = dummy };
     }
 
     pub fn deinit(self: *NFABuilder) void {
@@ -105,6 +95,7 @@ pub const NFABuilder = struct {
             self.alloc.destroy(state);
         }
         self.state_list.deinit(self.alloc);
+        self.tc_pool.deinit();
     }
 
     pub fn makeState(self: *NFABuilder, id: StateId) !*State {
@@ -185,9 +176,15 @@ pub const NFABuilder = struct {
             },
             .TrailingContext => {
                 const matchNFA = try self.astToNfa(node.TrailingContext.left);
-                var lookaheadNFA = try self.astToNfa(node.TrailingContext.right);
+                const lookaheadNFA = try self.astToNfa(node.TrailingContext.right);
+                // const repr = try lookaheadNFA.stringify(self.alloc);
+                // defer self.alloc.free(repr);
+                // std.debug.print("TC:\n{s}", .{repr});
 
-                return NFA { .start = matchNFA.start, .accept = matchNFA.accept, .lookAhead = &lookaheadNFA };
+                const ptr = try self.tc_pool.create();
+                ptr.* = lookaheadNFA;
+
+                return NFA { .start = matchNFA.start, .accept = matchNFA.accept, .lookAhead = ptr };
             },
             .Concat => {
                 var left_nfa = try self.astToNfa(node.Concat.left);
@@ -346,7 +343,8 @@ pub const NFABuilder = struct {
 
     pub fn merge(
         self: *NFABuilder,
-        NFAs: []NFA, lexParser: LexParser
+        NFAs: []NFA, 
+        lexParser: LexParser
     ) !struct { 
         ArrayList(DFAFragment),
         ArrayList(DFAFragment),
@@ -366,11 +364,17 @@ pub const NFABuilder = struct {
 
         for (NFAs, 0..) |inner, it| {
             if (inner.lookAhead) |tc| {
+                // defer self.alloc.free(repr);
                 // std.debug.print("{d}: Has trailing context\n", .{it});
-                // std.debug.print("{s}\n", .{ try tc.stringify(self.alloc)});
+                // const repr = try tc.stringify(self.alloc);
+                // defer self.alloc.free(repr);
+                // std.debug.print("{s}\n", .{repr});
+
                 //TODO: Determine if the trailing context and its rule are of arbitratry length.
                 //If not we can ommit the backtracking part of the matcher and add a precomputed backtracking in
                 //the action associated with the rule.
+
+                lexParser.rules.items[it].trailingContext = true;
                 var start = try self.makeState(0);
                 try start.transitions.append(.{ .symbol = .{ .epsilon = {} }, .to = tc.start});
                 try tc_acceptList.append(.{ .state = tc.accept, .priority = it });
@@ -396,7 +400,10 @@ pub const NFABuilder = struct {
                 };
                 if (!found) continue;
 
-                if (inner.matchStart == false) {
+                if (inner.matchStart == false and inner.lookAhead == null) {
+                    try start.transitions.append(.{ .symbol = .{ .epsilon = {} }, .to = inner.start});
+                    try acceptList.append(.{ .state = inner.accept, .priority = it });
+                } else if (inner.lookAhead != null) {
                     try start.transitions.append(.{ .symbol = .{ .epsilon = {} }, .to = inner.start});
                     try acceptList.append(.{ .state = inner.accept, .priority = it });
                 } else {

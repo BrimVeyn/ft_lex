@@ -1,13 +1,18 @@
+%{
+#include <stdio.h>
+#include <string.h>
+%}
+
 %%
 
-"exit" {
-	printf("Exit the program");
-	return 0;
+fool/(ing|bar) {
+	printf("matched foo followed by either ing or bar\n");
 }
 
-aa*b/(bar)+    { printf("Matched foo before bar\n"); }
-
-
-salope/a*b {
-	printf("Matched");
+fooling+/bar {
+	printf("matched fooling+ followed by bar\n");
 }
+
+.|\n                    { /* consume unknown */ }
+
+%%

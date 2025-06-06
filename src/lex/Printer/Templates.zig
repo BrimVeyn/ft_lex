@@ -54,8 +54,7 @@ pub const bodySecondPart = \\
 \\    if (!yyout) yyout = stdout;
 \\    int yy_failed_at_bol = 0;
 \\
-\\    int i = 0;
-\\    while (i++ < 1000) {
+\\    while (1) {
 \\        int state = (yy_start & 0xFFFF);
 \\
 \\        int yy_at_bol = yy_failed_at_bol ? 0 : YY_AT_BOL();
@@ -135,7 +134,7 @@ pub const bodySecondPart = \\
 \\        //ECHO
 \\        fwrite(yytext, yyleng, 1, yyout);
 \\
-\\        if (yy_buffer[yy_buf_pos] == 0) break;
+\\        if (last_read_c == -1 || yy_buffer[yy_buf_pos] == 0) break;
 \\    }
 \\
 \\    return 0;

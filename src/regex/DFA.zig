@@ -15,6 +15,7 @@ const DFAMinimizer          = @import("DFA_minimizer.zig");
 const Partition             = DFAMinimizer.Partition;
 
 const EC                    = @import("EquivalenceClasses.zig");
+const LexParser             = @import("../lex/Parser.zig");
 
 const DFATransition = struct {
     symbol: Symbol,
@@ -88,6 +89,7 @@ pub const DFA = struct {
     };
 
     alloc: std.mem.Allocator,
+    lexParser: *LexParser,
     epsilon_cache: std.AutoHashMap(StateSet, StateSet) = undefined,
     data: DfaTable = undefined,
     minimized: ?Partition = null,
@@ -96,36 +98,34 @@ pub const DFA = struct {
     cTransTable: ?CompressedTransitionTable = null,
     nfa_start: *State = undefined,
     yy_ec_highest: u8 = 0,
-    yy_accept: ?[]i16 = null,
+    yy_accept: ?[]i32 = null,
     offset: usize = 0,
 
 
-    pub fn buildFromNFA(alloc: std.mem.Allocator, nfa: NFA, acceptList: []AcceptState, maxEc: u8) !DFA {
-        var dfa = DFA.init(alloc, nfa, acceptList, maxEc);
-
+    pub fn buildFromNFA(
+        alloc: std.mem.Allocator,
+        lexParser: *LexParser,
+        nfa: NFA,
+        acceptList: []AcceptState, maxEc: u8
+    ) !DFA {
+        var dfa = DFA.init(alloc, lexParser, nfa, acceptList, maxEc);
         try dfa.subset_construction();
         try dfa.minimize();
-        //HACK: The compression in unnecessary here and for debug purpose only
+        //HACK: The compression in unnecessary here and used for debug purposes only
         // try dfa.compress();
-
         return dfa;
-    }
-
-    pub fn buildEmptyDFa(alloc: std.mem.Allocator, maxEc: u8) !DFA {
-        const nfa = try NFAModule.NFABuilder.initEmpty(alloc);
-        var dummy_al = try std.ArrayListUnmanaged(DFA.AcceptState).initCapacity(alloc, 1);
-        defer dummy_al.deinit(alloc);
-        return buildFromNFA(alloc, nfa, try dummy_al.toOwnedSlice(alloc), maxEc);
     }
 
     pub fn init(
         alloc: std.mem.Allocator,
+        lexParser: *LexParser,
         nfa: NFA,
         accept_list: []AcceptState,
         yy_ec_highest: u8
     ) DFA {
         return .{
             .alloc = alloc,
+            .lexParser = lexParser,
             .data = DfaTable.init(alloc),
             .nfa_start = nfa.start,
             .accept_list = accept_list,
@@ -179,14 +179,46 @@ pub const DFA = struct {
 
     fn getAcceptingRule(self: *DFA, set: StateSet) ?usize {
         var best: ?usize = null; 
+        var tc_prioriry: ?usize = null;
+
+        std.debug.print("\nNew state examined\n", .{});
 
         for (set.keys()) |s| {
             for (self.accept_list) |aState| {
-                if (s.id == aState.state.id and (best == null or aState.priority < best.?)) {
-                    best = aState.priority;
+                if (s.id == aState.state.id) {
+                    std.debug.print("Matched with state: {d}\n", .{aState.priority});
+                    if (
+                        self.lexParser.rules.items[aState.priority].trailingContext and 
+                        (tc_prioriry == null or aState.priority + 1 < tc_prioriry.?)
+                    ) {
+                        std.debug.print("Found trailing context\n", .{});
+                        tc_prioriry = aState.priority + 1;
+                        continue;
+                    }
+                    if (best == null or aState.priority + 1 < best.?) {
+                        best = aState.priority + 1;
+                    }
                 }
+                // if (s.id == aState.state.id and (best == null or aState.priority < best.?)) {
+                //     best = aState.priority;
+                // }
             }
         }
+
+        if (tc_prioriry) |tc| {
+            //Only store shift the tc accepting state if there is a conflict
+            if (best) |*b| {
+                if (tc != best) {
+                    const old = b.*;
+                    b.* = (tc << @as(u6, 16)) + b.*;
+                    std.debug.print("best is now: {d}, composed of : {d} - {d}\n", .{b.*, tc, old});
+                }
+            } else {
+                best = (tc << @as(u16, 16));
+            }
+        }
+
+
         return best;
     }
 
@@ -288,6 +320,12 @@ pub const DFA = struct {
                 }
             }
         }
+        std.debug.print("\nDFA table after :\n", .{});
+        var it = self.data.iterator();
+        while (it.next()) |entry| {
+            // std.debug.print("Key: {}\n", .{entry.key_ptr.*});
+            std.debug.print("Value: {?}\n", .{entry.value_ptr.*.accept_id});
+        }
     }
 
     //TODO: remove this strcucture and store sc, and tc fields in DFA
@@ -301,6 +339,7 @@ pub const DFA = struct {
 
     pub fn buildAndMergeFromNFAs(
         alloc: std.mem.Allocator,
+        lexParser: *LexParser,
         mergedNFAs: ArrayList(DFAFragment),
         bolMergedNFAs: ArrayList(DFAFragment),
         tcNFAs: ArrayList(DFAFragment),
@@ -323,7 +362,7 @@ pub const DFA = struct {
         for (mergedNFAs.items, 0..) |nfa, it| {
             _ = it;
             // std.debug.print("[NORMAL] DFA {d}\n\n", .{it});
-            const dfa = try DFA.buildFromNFA(alloc, nfa.nfa, nfa.acceptList, ec.maxEc);
+            const dfa = try DFA.buildFromNFA(alloc, lexParser, nfa.nfa, nfa.acceptList, ec.maxEc);
             try DFAs.append(alloc, .{ .dfa = dfa, .sc = nfa.sc });
         }
 
@@ -331,12 +370,12 @@ pub const DFA = struct {
             _ = it;
             // std.debug.print("[BOL] DFA {d}\n\n", .{it});
             // std.debug.print("{s}\n", .{try nfa.nfa.stringify(alloc)});
-            const dfa = try DFA.buildFromNFA(alloc, nfa.nfa, nfa.acceptList, ec.maxEc);
+            const dfa = try DFA.buildFromNFA(alloc, lexParser, nfa.nfa, nfa.acceptList, ec.maxEc);
             try bol_DFAs.append(alloc, .{ .dfa = dfa, .sc = nfa.sc });
         }
 
         for (tcNFAs.items) |nfa| {
-            const dfa = try DFA.buildFromNFA(alloc, nfa.nfa, nfa.acceptList, ec.maxEc);
+            const dfa = try DFA.buildFromNFA(alloc, lexParser, nfa.nfa, nfa.acceptList, ec.maxEc);
             try tc_DFAs.append(alloc, .{ .dfa = dfa, .sc = nfa.sc, .trailingContextRuleId = nfa.trailingContextRuleId.? });
         }
 
@@ -350,6 +389,7 @@ pub const DFA = struct {
         tcDFAs: ArrayListUnmanaged(DFA_SC),
     ) !DFA {
         var merged = DFA {
+            .lexParser = DFAs.items[0].dfa.lexParser,
             .alloc = DFAs.items[0].dfa.alloc,
             .yy_ec_highest = DFAs.items[0].dfa.yy_ec_highest,
         };
@@ -398,18 +438,15 @@ pub const DFA = struct {
         return merged;
     }
 
-    pub fn getAcceptTable(self: DFA) ![]i16 {
+    pub fn getAcceptTable(self: DFA) ![]i32 {
         if (self.minimized) |m| {
-            var ret = try ArrayList(i16).initCapacity(self.alloc, m.data.items.len);
-            defer ret.deinit();
+            const ret = try self.alloc.alloc(i32, m.data.items.len);
+            @memset(ret, 0);
 
-            ret.expandToCapacity();
-            @memset(ret.items[0..], 0);
-
-            for (m.data.items, ret.items) |s, *a| {
-                if (s.accept_id) |id| a.* = @intCast(id + 1);
+            for (m.data.items, ret) |s, *a| {
+                if (s.accept_id) |id| a.* = @intCast(id);
             }
-            return ret.toOwnedSlice();
+            return ret;
         } else @panic("MinDFA not built !");
     }
 

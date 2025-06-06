@@ -112,14 +112,14 @@ pub fn main() !u8 {
         defer headList.deinit();
 
         for (lexParser.rules.items) |rule| {
-            regexParser.loadSlice(rule.regex);
             regexParser.hasSeenTrailingContext = false;
-            // std.debug.print("Parsing regex: {s}", .{rule.regex});
+            regexParser.loadSlice(rule.regex);
             const head = regexParser.parse() catch |e| {
                 std.log.err("\"{s}\": {!}", .{rule.regex, e});
                 return 1;
             };
-            // head.dump(0);
+            std.debug.print("\n\n\n\n\n\n\n\n\nREGEX:\n\n", .{});
+            head.dump(0);
             try headList.append(head);
         }
 
@@ -149,7 +149,7 @@ pub fn main() !u8 {
         }
 
         var finalDfa, var DFAs, var bol_DFAs, var tc_DFAs = 
-            try DFA.buildAndMergeFromNFAs(alloc, mergedNFAs, bolMergedNFAs, tcNFAs, ec);
+            try DFA.buildAndMergeFromNFAs(alloc, &lexParser, mergedNFAs, bolMergedNFAs, tcNFAs, ec);
 
         defer {
             for (DFAs.items) |*dfa_sc| dfa_sc.dfa.deinit();

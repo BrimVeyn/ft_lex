@@ -70,7 +70,7 @@ fn assertCompressionIsValid(path: []const u8) !void {
     }
 
     var finalDfa, var DFAs, var bol_DFAs, var tc_DFAs = 
-    try DFA.buildAndMergeFromNFAs(alloc, mergedNFAs, bolMergedNFAs, tcNFAs, ec);
+    try DFA.buildAndMergeFromNFAs(alloc, &lexParser, mergedNFAs, bolMergedNFAs, tcNFAs, ec);
 
     defer {
         for (DFAs.items) |*dfa_sc| dfa_sc.dfa.deinit();

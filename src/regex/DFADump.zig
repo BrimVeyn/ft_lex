@@ -25,7 +25,7 @@ pub fn stringify(self: DFA, alloc: std.mem.Allocator) ![]u8 {
         const i_src = self.data.getIndex(entry.key_ptr.*);
         if (entry.value_ptr.accept_id) |accept_id| {
             const fmt = "d{d} [shape=\"doublecircle\", style=\"filled\", fillcolor=\"{s}\", label=\"d{0d} r{d}\"]\n";
-            try writer.print(fmt, .{i_src.?, cycler.getColor(accept_id), accept_id});
+            try writer.print(fmt, .{i_src.?, cycler.getColor(accept_id - 1), accept_id - 1});
         }
         for (entry.value_ptr.*.transitions.items) |t| {
             const i_dest = self.data.getIndex(t.to);
@@ -51,7 +51,7 @@ pub fn minimizedStringify(self: DFA, alloc: std.mem.Allocator) ![]u8 {
     for (minimized.data.items, 0..) |state, sId| {
         if (state.accept_id) |accept_id| {
             const fmt = "dm{d} [shape=\"doublecircle\", style=\"filled\", fillcolor=\"{s}\", label=\"d{0d} r{d}\"]\n";
-            try writer.print(fmt, .{sId, cycler.getColor(accept_id), accept_id});
+            try writer.print(fmt, .{sId, cycler.getColor(accept_id - 1), accept_id - 1});
         }
         for (state.signature.?.data.items) |t| {
             switch (t.symbol) {
