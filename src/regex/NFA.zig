@@ -351,33 +351,27 @@ pub const NFABuilder = struct {
         ArrayList(DFAFragment),
     } {
 
-        var merged_NFAs = ArrayList(DFAFragment).init(self.alloc);
-        var bol_NFAs = ArrayList(DFAFragment).init(self.alloc);
-        var tc_NFAs = ArrayList(DFAFragment).init(self.alloc);
-        var acceptList = ArrayList(DFA.AcceptState).init(self.alloc);
+        var merged_NFAs    = ArrayList(DFAFragment).init(self.alloc);
+        var bol_NFAs       = ArrayList(DFAFragment).init(self.alloc);
+        var tc_NFAs        = ArrayList(DFAFragment).init(self.alloc);
+        var acceptList     = ArrayList(DFA.AcceptState).init(self.alloc);
         var bol_acceptList = ArrayList(DFA.AcceptState).init(self.alloc);
-        var tc_acceptList = ArrayList(DFA.AcceptState).init(self.alloc);
+        var tc_acceptList  = ArrayList(DFA.AcceptState).init(self.alloc);
         errdefer {
             merged_NFAs.deinit(); bol_NFAs.deinit();
             acceptList.deinit(); bol_acceptList.deinit();
         }
 
         for (NFAs, 0..) |inner, it| {
-            if (inner.lookAhead) |tc| {
-                // defer self.alloc.free(repr);
-                // std.debug.print("{d}: Has trailing context\n", .{it});
-                // const repr = try tc.stringify(self.alloc);
-                // defer self.alloc.free(repr);
-                // std.debug.print("{s}\n", .{repr});
-
+            if (inner.lookAhead != null) {
                 //TODO: Determine if the trailing context and its rule are of arbitratry length.
                 //If not we can ommit the backtracking part of the matcher and add a precomputed backtracking in
                 //the action associated with the rule.
 
                 lexParser.rules.items[it].trailingContext = true;
                 var start = try self.makeState(0);
-                try start.transitions.append(.{ .symbol = .{ .epsilon = {} }, .to = tc.start});
-                try tc_acceptList.append(.{ .state = tc.accept, .priority = it });
+                try start.transitions.append(.{ .symbol = .{ .epsilon = {} }, .to = inner.start});
+                try tc_acceptList.append(.{ .state = inner.accept, .priority = it });
                 try tc_NFAs.append(.{
                     .nfa = .{
                         .start = start,
@@ -405,7 +399,8 @@ pub const NFABuilder = struct {
                     try acceptList.append(.{ .state = inner.accept, .priority = it });
                 } else if (inner.lookAhead != null) {
                     try start.transitions.append(.{ .symbol = .{ .epsilon = {} }, .to = inner.start});
-                    try acceptList.append(.{ .state = inner.accept, .priority = it });
+                    try inner.accept.transitions.append(.{ .symbol = .{ .epsilon = {} }, .to = inner.lookAhead.?.start });
+                    try acceptList.append(.{ .state = inner.lookAhead.?.accept, .priority = it });
                 } else {
                     try bol_start.transitions.append(.{ .symbol = .{ .epsilon = {} }, .to = inner.start});
                     try bol_acceptList.append(.{ .state = inner.accept, .priority = it });

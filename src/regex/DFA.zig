@@ -76,9 +76,9 @@ pub fn printStateSet(self: StateSet) !void {
 pub const DFA = struct {
     const TransitionTable = ArrayList(ArrayList(i16));
     const CompressedTransitionTable = struct {
-        base: []i16,
-        check: []i16,
-        next: []i16,
+        base   : []i16,
+        check  : []i16,
+        next   : []i16,
         default: []i16,
     };
 
@@ -88,18 +88,18 @@ pub const DFA = struct {
         priority: usize,
     };
 
-    alloc: std.mem.Allocator,
-    lexParser: *LexParser,
+    alloc        : std.mem.Allocator,
+    lexParser    : *LexParser,
     epsilon_cache: std.AutoHashMap(StateSet, StateSet) = undefined,
-    data: DfaTable = undefined,
-    minimized: ?Partition = null,
-    accept_list: []AcceptState = undefined,
-    transTable: ?TransitionTable = null,
-    cTransTable: ?CompressedTransitionTable = null,
-    nfa_start: *State = undefined,
+    data         : DfaTable = undefined,
+    minimized    : ?Partition = null,
+    accept_list  : []AcceptState = undefined,
+    transTable   : ?TransitionTable = null,
+    cTransTable  : ?CompressedTransitionTable = null,
+    nfa_start    : *State = undefined,
     yy_ec_highest: u8 = 0,
-    yy_accept: ?[]i32 = null,
-    offset: usize = 0,
+    yy_accept    : ?[]i32 = null,
+    offset       : usize = 0,
 
 
     pub fn buildFromNFA(
@@ -174,51 +174,20 @@ pub const DFA = struct {
         if (self.yy_accept) |a| self.alloc.free(a);
     }
 
-    pub const stringify = DFADump.stringify;
+    pub const stringify          = DFADump.stringify;
     pub const minimizedStringify = DFADump.minimizedStringify;
+    pub const minimize           = DFAMinimizer.minimize;
 
     fn getAcceptingRule(self: *DFA, set: StateSet) ?usize {
         var best: ?usize = null; 
-        var tc_prioriry: ?usize = null;
-
-        std.debug.print("\nNew state examined\n", .{});
 
         for (set.keys()) |s| {
             for (self.accept_list) |aState| {
-                if (s.id == aState.state.id) {
-                    std.debug.print("Matched with state: {d}\n", .{aState.priority});
-                    if (
-                        self.lexParser.rules.items[aState.priority].trailingContext and 
-                        (tc_prioriry == null or aState.priority + 1 < tc_prioriry.?)
-                    ) {
-                        std.debug.print("Found trailing context\n", .{});
-                        tc_prioriry = aState.priority + 1;
-                        continue;
-                    }
-                    if (best == null or aState.priority + 1 < best.?) {
-                        best = aState.priority + 1;
-                    }
+                if (s.id == aState.state.id and (best == null or (aState.priority + 1) < best.?)) {
+                    best = (aState.priority + 1);
                 }
-                // if (s.id == aState.state.id and (best == null or aState.priority < best.?)) {
-                //     best = aState.priority;
-                // }
             }
         }
-
-        if (tc_prioriry) |tc| {
-            //Only store shift the tc accepting state if there is a conflict
-            if (best) |*b| {
-                if (tc != best) {
-                    const old = b.*;
-                    b.* = (tc << @as(u6, 16)) + b.*;
-                    std.debug.print("best is now: {d}, composed of : {d} - {d}\n", .{b.*, tc, old});
-                }
-            } else {
-                best = (tc << @as(u16, 16));
-            }
-        }
-
-
         return best;
     }
 
@@ -335,7 +304,6 @@ pub const DFA = struct {
         trailingContextRuleId: ?usize = null,
     };
 
-    pub const minimize = DFAMinimizer.minimize;
 
     pub fn buildAndMergeFromNFAs(
         alloc: std.mem.Allocator,
@@ -350,26 +318,21 @@ pub const DFA = struct {
         ArrayListUnmanaged(DFA_SC),
         ArrayListUnmanaged(DFA_SC),
     } {
-        var DFAs = try ArrayListUnmanaged(DFA_SC).initCapacity(alloc, mergedNFAs.items.len);
+        var DFAs     = try ArrayListUnmanaged(DFA_SC).initCapacity(alloc, mergedNFAs.items.len);
         var bol_DFAs = try ArrayListUnmanaged(DFA_SC).initCapacity(alloc, 1);
-        var tc_DFAs = try ArrayListUnmanaged(DFA_SC).initCapacity(alloc, 1);
+        var tc_DFAs  = try ArrayListUnmanaged(DFA_SC).initCapacity(alloc, 1);
         errdefer {
             DFAs.deinit(alloc);
             bol_DFAs.deinit(alloc);
             tc_DFAs.deinit(alloc);
         }
 
-        for (mergedNFAs.items, 0..) |nfa, it| {
-            _ = it;
-            // std.debug.print("[NORMAL] DFA {d}\n\n", .{it});
+        for (mergedNFAs.items) |nfa| {
             const dfa = try DFA.buildFromNFA(alloc, lexParser, nfa.nfa, nfa.acceptList, ec.maxEc);
             try DFAs.append(alloc, .{ .dfa = dfa, .sc = nfa.sc });
         }
 
-        for (bolMergedNFAs.items, 0..) |nfa, it| {
-            _ = it;
-            // std.debug.print("[BOL] DFA {d}\n\n", .{it});
-            // std.debug.print("{s}\n", .{try nfa.nfa.stringify(alloc)});
+        for (bolMergedNFAs.items) |nfa| {
             const dfa = try DFA.buildFromNFA(alloc, lexParser, nfa.nfa, nfa.acceptList, ec.maxEc);
             try bol_DFAs.append(alloc, .{ .dfa = dfa, .sc = nfa.sc });
         }
@@ -384,9 +347,9 @@ pub const DFA = struct {
     }
 
     pub fn merge(
-        DFAs: ArrayListUnmanaged(DFA_SC),
+        DFAs   : ArrayListUnmanaged(DFA_SC),
         bolDFAs: ArrayListUnmanaged(DFA_SC),
-        tcDFAs: ArrayListUnmanaged(DFA_SC),
+        tcDFAs : ArrayListUnmanaged(DFA_SC),
     ) !DFA {
         var merged = DFA {
             .lexParser = DFAs.items[0].dfa.lexParser,

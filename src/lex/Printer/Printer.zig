@@ -73,7 +73,7 @@ fn printSCEnum(
     _ = try writer.write("};\n\n");
 }
 
-fn printyy_acclist(dfa: DFA, tc_dfa: ArrayListUnmanaged(DFA.DFA_SC), lexParser: LexParser, writer: std.fs.File.Writer) !void {
+fn printYyAcclist(dfa: DFA, tc_dfa: ArrayListUnmanaged(DFA.DFA_SC), lexParser: LexParser, writer: std.fs.File.Writer) !void {
     var acclist = try dfa.alloc.alloc(i16, lexParser.rules.items.len + 1);
     defer dfa.alloc.free(acclist);
     @memset(acclist, 0);
@@ -108,7 +108,7 @@ fn printTables(dfa: DFA, tc_dfas: ArrayListUnmanaged(DFA.DFA_SC), lexParser: Lex
     _ = try writer.write("#include <stdint.h>\n");
     _ = try writer.write("#include <stdio.h>\n");
     _ = try writer.write("#include <string.h>\n\n\n");
-    try printyy_acclist(dfa, tc_dfas, lexParser, writer);
+    try printYyAcclist(dfa, tc_dfas, lexParser, writer);
     try printTable(i32, writer, dfa.yy_accept.?, "accept", "32", "");
     try printTable(u8, writer, @constCast((ec.yy_ec)[0..]), "ec", "8", "u");
     try printTable(i16, writer, dfa.cTransTable.?.base, "base", "16", "");
@@ -128,7 +128,7 @@ fn printUserCode(lexParser: LexParser, opts: LexOptions, writer: anytype) !void 
 fn printBody(lexParser: LexParser, writer: anytype) !void {
     _ = try writer.write(Templates.bodyFirstPart);
     try printActions(lexParser, writer);
-    _ = try writer.write(Templates.bodySecondPart);
+    _ = try writer.write(Templates.bodySecondPartWithTc);
 }
 
 
