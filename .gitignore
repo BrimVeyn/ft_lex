@@ -5,3 +5,4 @@ experiments/test.pdf
 experiments/test.png
 experiments/test.lang
 experiments/test.graph
+src/test/lex/outputs/*
