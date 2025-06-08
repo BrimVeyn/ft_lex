@@ -185,9 +185,10 @@ pub fn makeGroup(self: *Parser) ParserError!*RegexNode {
     return node;
 }
 
-
 pub fn makeAnchorStart(self: *Parser) ParserError!*RegexNode {
     std.debug.assert(self.currentEql(.AnchorStart));
+    if (self.pos != 0)
+        return error.AnchorMisuse;
     _ = self.advance();
     return makeNode(self, .{ 
         .AnchorStart = try self.parseExpr(.Anchoring),
@@ -196,12 +197,9 @@ pub fn makeAnchorStart(self: *Parser) ParserError!*RegexNode {
 
 fn makeBitSet(comptime predicate: fn (u8) bool) std.StaticBitSet(256) {
     var ret = std.StaticBitSet(256).initEmpty();
-    var i: usize = 0;
-    while (i < 256) : (i += 1) {
+    for (0..256) |i| {
         const iu8: u8 = @intCast(i);
-        if (predicate(iu8)) {
-            ret.set(iu8);
-        }
+        if (predicate(iu8)) ret.set(iu8);
     }
     return ret;
 }
@@ -358,11 +356,19 @@ pub fn makeAlternation(self: *Parser, left: *RegexNode) ParserError!*RegexNode {
 }
 
 pub fn makeAnchorEnd(self: *Parser, left: *RegexNode) ParserError!*RegexNode {
-    if (!self.peekEql(.Eof))
+    if (!self.peekEql(.Eof) or self.hasSeenTrailingContext == true)
         return ParserError.AnchorMisuse;
+
+    self.hasSeenTrailingContext = true;
     _ = self.advance();
+
     return makeNode(self, .{
-        .AnchorEnd = left 
+        .TrailingContext = .{
+            .left = left,
+            .right = try makeNode(self, .{
+                .CharClass = .{ .negate = false, .range = makeBitSet(Ascii.dot) },
+            }),
+        },
     });
 }
 

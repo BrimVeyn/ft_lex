@@ -289,12 +289,6 @@ pub const DFA = struct {
                 }
             }
         }
-        std.debug.print("\nDFA table after :\n", .{});
-        var it = self.data.iterator();
-        while (it.next()) |entry| {
-            // std.debug.print("Key: {}\n", .{entry.key_ptr.*});
-            std.debug.print("Value: {?}\n", .{entry.value_ptr.*.accept_id});
-        }
     }
 
     //TODO: remove this strcucture and store sc, and tc fields in DFA

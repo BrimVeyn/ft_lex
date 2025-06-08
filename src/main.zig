@@ -112,7 +112,6 @@ pub fn main() !u8 {
         defer headList.deinit();
 
         for (lexParser.rules.items) |rule| {
-            regexParser.hasSeenTrailingContext = false;
             regexParser.loadSlice(rule.regex);
             const head = regexParser.parse() catch |e| {
                 std.log.err("\"{s}\": {!}", .{rule.regex, e});

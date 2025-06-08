@@ -58,7 +58,6 @@ pub const Tokenizer = struct {
     pub const TokenizerCtx = enum {
         BracketExp,
         QuoteExp,
-        RegexExpStart,
         RegexExpCommon,
     };
 
@@ -71,7 +70,6 @@ pub const Tokenizer = struct {
             .nextFn = switch (ctx) {
                 .BracketExp => &nextBracketExp,
                 .RegexExpCommon => &nextRegexExp,
-                .RegexExpStart => &nextRegexExpStart,
                 .QuoteExp => &nextQuoteExp,
             },
         };
@@ -81,7 +79,6 @@ pub const Tokenizer = struct {
         self.nextFn = switch (ctx) {
             .BracketExp => &nextBracketExp,
             .RegexExpCommon => &nextRegexExp,
-            .RegexExpStart => &nextRegexExpStart,
             .QuoteExp => &nextQuoteExp,
         };
     }
@@ -113,26 +110,6 @@ pub const Tokenizer = struct {
                 '|' => Token.Union,
                 '/' => Token.TrailingContext,
                 else => Token{ .Char = c },
-            };
-        }
-        return Token.Eof;
-    }
-
-    ///Angle bracket is considered literal except if it's the first character of the line
-    pub fn nextRegexExpStart(self: *Tokenizer) Token {
-        while (self.index < self.input.len) {
-            const c = self.input[self.index];
-            self.index += 1;
-
-            return switch (c) {
-                '<' => Token.StartConditionOpen,
-                else => {
-                    //Switch context back to regular Regex and return generated token, 
-                    //go back one character that'll be eaten by the other next fn
-                    self.index -= 1;
-                    self.changeContext(.RegexExpCommon);
-                    return self.next();
-                },
             };
         }
         return Token.Eof;

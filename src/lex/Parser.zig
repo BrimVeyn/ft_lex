@@ -274,6 +274,9 @@ fn extractStartConditions(self: *LexParser) !void {
             }
             return error.InvalidStartCondition;
         }
+        const new = try self.alloc.dupe(u8, r.regex[outer_it + 1..]);
+        self.alloc.free(r.regex);
+        r.regex = new;
     }
 }
 

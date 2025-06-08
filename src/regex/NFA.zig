@@ -51,6 +51,15 @@ pub const Transition = struct {
 pub const State = struct {
     id: StateId,
     transitions: std.ArrayList(Transition),
+
+    pub fn clone(self: State, alloc: std.mem.Allocator) !*State {
+        const ret = try alloc.create(State);
+        ret.* = State {
+            .id = self.id,
+            .transitions = try self.transitions.clone(),
+        };
+        return ret;
+    }
 };
 
 pub const NFAError = error {
@@ -59,11 +68,11 @@ pub const NFAError = error {
 } || error { OutOfMemory };
 
 pub const NFA = struct {
-    start: *State,
-    accept: *State,
-    lookAhead: ?*NFA = null,
-    matchStart: bool = false,
-    matchEnd: bool = false,
+    start          : *State,
+    accept         : *State,
+    lookAhead      : ?*NFA = null,
+    matchStart     : bool = false,
+    matchEnd       : bool = false,
     start_condition: ?[64:0]u8 = null,
 
     pub const stringify = NFADump.stringify;
@@ -71,13 +80,13 @@ pub const NFA = struct {
 
 pub const NFABuilder = struct {
     state_list: std.ArrayListUnmanaged(*State),
-    alloc: std.mem.Allocator,
-    tc_pool: std.heap.MemoryPool(NFA),
-    next_id: StateId = 1,
-    depth: usize = 0,
-    //Parser is need to allocate more RegexNodes when its needed
-    parser: *ParserModule.Parser,
-    yy_ec: *const [256]u8,
+    alloc     : std.mem.Allocator,
+    tc_pool   : std.heap.MemoryPool(NFA),
+    next_id   : StateId = 1,
+    depth     : usize = 0,
+    //Parser is needed to allocate more RegexNodes when necessary
+    parser    : *ParserModule.Parser,
+    yy_ec     : *const [256]u8,
 
     pub fn init(alloc: std.mem.Allocator, parser: *ParserModule.Parser, yy_ec: *const [256]u8) !NFABuilder {
         return .{
@@ -114,10 +123,9 @@ pub const NFABuilder = struct {
 
     pub fn astToNfa(self: *NFABuilder, node: *ParserModule.RegexNode) NFAError!NFA {
         self.depth += 1;
-        //NOTE: Avoid infinite recursion
-        if (self.next_id > NFA_LIMIT or self.depth > RECURSION_LIMIT) {
+
+        if (self.next_id > NFA_LIMIT or self.depth > RECURSION_LIMIT)
             return error.NFATooComplicated;
-        }
 
         return switch (node.*) {
             .Group => {
@@ -125,46 +133,12 @@ pub const NFABuilder = struct {
             },
             .AnchorStart => {
                 std.debug.assert(self.depth == 1);
-                var inner: NFA = undefined;
-                //If we know that anchorEnd is also active, parse its child directly so we can trigger
-                //both matchStart and matchEnd on the root node.
-                if (std.meta.activeTag(node.AnchorStart.*) == ParserModule.RegexNode.AnchorEnd) {
-                    inner = try self.astToNfa(node.AnchorStart.AnchorEnd);
-                    inner.matchStart = true;
-                    inner.matchEnd = true;
-                } else {
-                    inner = try self.astToNfa(node.AnchorStart);
-                    inner.matchStart = true;
-                }
-
+                var inner = try self.astToNfa(node.AnchorStart);
+                inner.matchStart = true;
                 return inner;
             },
-            .StartCondition => {
-                var inner: NFA = undefined;
-                //Same applies here, if we know that it child has AnchorStart, we check for its child it has AnchorEnd 
-                //and update the inner NFA accordingly
-                if (std.meta.activeTag(node.StartCondition.left.*) == ParserModule.RegexNode.AnchorStart
-                    and std.meta.activeTag(node.StartCondition.left.AnchorStart.*) == ParserModule.RegexNode.AnchorEnd) {
-                    inner = try self.astToNfa(node.StartCondition.left.AnchorStart.AnchorEnd);
-                    inner.matchStart = true;
-                    inner.matchEnd = true;
-                } else if (std.meta.activeTag(node.StartCondition.left.*) == ParserModule.RegexNode.AnchorStart) {
-                    inner = try self.astToNfa(node.StartCondition.left.AnchorStart);
-                    inner.matchStart = true;
-                } else {
-                    inner = try self.astToNfa(node.StartCondition.left);
-                }
-
-                inner.start_condition = .{0} ** 64;
-                @memcpy(inner.start_condition.?[0..], node.StartCondition.name[0..]);
-                return inner;
-            },
-            .AnchorEnd => {
-                std.debug.assert(self.depth == 1);
-                var inner = try self.astToNfa(node.AnchorEnd);
-                inner.matchEnd = true;
-                return inner;
-            },
+            .StartCondition => { unreachable; },
+            .AnchorEnd => { unreachable; },
             .Char => {
                 const start = try self.makeState(self.next_id);
                 self.next_id += 1;
@@ -177,9 +151,6 @@ pub const NFABuilder = struct {
             .TrailingContext => {
                 const matchNFA = try self.astToNfa(node.TrailingContext.left);
                 const lookaheadNFA = try self.astToNfa(node.TrailingContext.right);
-                // const repr = try lookaheadNFA.stringify(self.alloc);
-                // defer self.alloc.free(repr);
-                // std.debug.print("TC:\n{s}", .{repr});
 
                 const ptr = try self.tc_pool.create();
                 ptr.* = lookaheadNFA;
@@ -364,8 +335,8 @@ pub const NFABuilder = struct {
 
         for (NFAs, 0..) |inner, it| {
             if (inner.lookAhead != null) {
-                //TODO: Determine if the trailing context and its rule are of arbitratry length.
-                //If not we can ommit the backtracking part of the matcher and add a precomputed backtracking in
+                //TODO: Determine if the trailing context and its rule are of arbitrary length.
+                //If not we can omit the backtracking part of the matcher and add a precomputed backtracking in
                 //the action associated with the rule.
 
                 lexParser.rules.items[it].trailingContext = true;

@@ -1,17 +1,9 @@
 %%
 
-foobar {
+^foobar {
 	printf("Matched foobar at bol\n");
 }
 
 (foobar)+ {
 	printf("Matched foobar+\n");
 }
-
-.|\n {
-	printf("Unknow character\n");
-}
-
-foobar
-foobarfoobarfoobar
-foobar

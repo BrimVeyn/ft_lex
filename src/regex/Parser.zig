@@ -80,21 +80,20 @@ pub const RegexNode = union(enum) {
 const nud_handler_fn = *const fn (self: *Parser) ParserError!*RegexNode;
 const led_handler_fn = *const fn (self: *Parser, left: *RegexNode) ParserError!*RegexNode;
 
-tokenizer: Tokenizer = undefined,
-current: Token = undefined,
-pool: std.heap.MemoryPool(RegexNode),
-nud_lookup: ?[Tokenizer.TokenCount]?nud_handler_fn = null,
-led_lookup: ?[Tokenizer.TokenCount]?led_handler_fn = null,
-bp_lookup: ?[Tokenizer.TokenCount]?BindingPower = null,
-//Used to handle nested grouping
-depth: usize = 0,
-quote: bool = false,
+tokenizer             : Tokenizer = undefined,
+current               : Token = undefined,
+pool                  : std.heap.MemoryPool(RegexNode),
+nud_lookup            : ?[Tokenizer.TokenCount]?nud_handler_fn = null,
+led_lookup            : ?[Tokenizer.TokenCount]?led_handler_fn = null,
+bp_lookup             : ?[Tokenizer.TokenCount]?BindingPower = null,
+classSet              : std.AutoArrayHashMap(std.StaticBitSet(256), void),
+depth                 : usize = 0,
+pos                   : usize = 0,
+quote                 : bool = false,
 hasSeenTrailingContext: bool = false,
-//Collects character classes
-classSet: std.AutoArrayHashMap(std.StaticBitSet(256), void),
 
 pub fn initWithSlice(alloc: std.mem.Allocator, input: []const u8) !Parser {
-    var tokenizer = Tokenizer.init(input, .RegexExpStart);
+    var tokenizer = Tokenizer.init(input, .RegexExpCommon);
     const first_token = tokenizer.next();
     var parser = Parser {
         .tokenizer = tokenizer,
@@ -116,9 +115,13 @@ pub fn init(alloc: std.mem.Allocator) !Parser {
 }
 
 pub fn loadSlice(self: *Parser, slice: []u8) void {
-    self.tokenizer = Tokenizer.init(slice, .RegexExpStart);
+    self.pos = 0;
+    self.hasSeenTrailingContext = false;
+    self.quote = false;
+    self.depth = 0;
+
+    self.tokenizer = Tokenizer.init(slice, .RegexExpCommon);
     self.current = self.tokenizer.next();
-    // std.log.info("Token: {}", .{self.current});
 }
 
 pub fn deinit(self: *Parser) void {
@@ -130,7 +133,7 @@ pub fn deinit(self: *Parser) void {
 pub fn advance(self: *Parser) Token {
     const token = self.current;
     self.current = self.tokenizer.next();
-    // std.log.info("Token: {}", .{self.current});
+    self.pos += 1;
     return token;
 }
 
