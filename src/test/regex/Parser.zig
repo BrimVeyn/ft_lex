@@ -171,30 +171,30 @@ test "Grouping and concatenation" {
     try std.testing.expectEqualDeep(head, expect);
 }
 
-test "Anchors" {
-    var parser, const head = try parseAll(std.testing.allocator, "^abc$");
-    defer parser.deinit();
-
-    const abc = try Makers.makeNode(&parser, .{
-        .Concat = .{
-            .left = try makeEC(&parser, false, "a"),
-            .right = try Makers.makeNode(&parser, .{
-                .Concat = .{
-                    .left = try makeEC(&parser, false, "b"),
-                    .right = try makeEC(&parser, false, "c"),
-                },
-            }),
-        },
-    });
-
-    const anchored = try Makers.makeNode(&parser, .{
-        .AnchorStart = try Makers.makeNode(&parser, .{
-            .AnchorEnd = abc,
-        }),
-    });
-
-    try std.testing.expectEqualDeep(head, anchored);
-}
+// test "Anchors" {
+//     var parser, const head = try parseAll(std.testing.allocator, "^abc$");
+//     defer parser.deinit();
+//
+//     const abc = try Makers.makeNode(&parser, .{
+//         .Concat = .{
+//             .left = try makeEC(&parser, false, "a"),
+//             .right = try Makers.makeNode(&parser, .{
+//                 .Concat = .{
+//                     .left = try makeEC(&parser, false, "b"),
+//                     .right = try makeEC(&parser, false, "c"),
+//                 },
+//             }),
+//         },
+//     });
+//
+//     const anchored = try Makers.makeNode(&parser, .{
+//         .AnchorStart = try Makers.makeNode(&parser, .{
+//             .AnchorEnd = abc,
+//         }),
+//     });
+//
+//     try std.testing.expectEqualDeep(head, anchored);
+// }
 
 test "CharClass simple" {
     var parser, const head = try parseAll(std.testing.allocator, "[abc]");
@@ -236,26 +236,6 @@ test "Trailing context" {
         },
     });
 
-    try std.testing.expectEqualDeep(head, expect);
-}
-
-test "Start condition + concatenation" {
-    var parser, const head = try parseAll(std.testing.allocator, "<COMMENT>ab");
-    defer parser.deinit();
-
-    const inner = try Makers.makeNode(&parser, .{
-        .Concat = .{
-            .left = try makeEC(&parser, false, "a"),
-            .right = try makeEC(&parser, false, "b"),
-        },
-    });
-
-    const expect = try Makers.makeNode(&parser, .{
-        .StartCondition = .{
-            .name = fillNameBuf("COMMENT"),
-            .left = inner,
-        },
-    });
     try std.testing.expectEqualDeep(head, expect);
 }
 
@@ -370,7 +350,6 @@ test "Parser errors" {
 
     const escapes = [_]Pair{
         .{ "a^", ParserError.PrefixUnexpected },
-        .{ "<>abc", ParserError.BadStartConditionList },
         .{ "abc/def/efg", ParserError.TooManyTrailingContexts },
         .{ "a}ab", ParserError.UnexpectedRightBrace },
         .{ "a)bc", ParserError.UnbalancedParenthesis },

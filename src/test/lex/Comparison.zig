@@ -229,3 +229,31 @@ test "Hard start conditions and bol" {
         "src/test/lex/examples/start_conditions_and_bol_2.lang"
     );
 }
+
+test "Overlapping bol and default" {
+    try compareOutput(
+        "src/test/lex/examples/bol_longest_match.l",
+        "src/test/lex/examples/bol_longest_match.lang",
+    );
+}
+
+test "C99 ANSI syntax" {
+    try compareOutput(
+        "src/test/lex/examples/c99_ansi.l",
+        "src/test/lex/examples/c99_ansi.lang",
+    );
+}
+
+test "Easy trailing context" {
+    try compareOutput(
+        "src/test/lex/examples/easy_trailing_context.l",
+        "src/test/lex/examples/easy_trailing_context.lang",
+    );
+}
+
+test "Wc" {
+    try compareOutput(
+        "src/test/lex/examples/wc.l",
+        "src/test/lex/examples/wc.lang",
+    );
+}

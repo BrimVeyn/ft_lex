@@ -432,7 +432,7 @@ pub const LexTokenizer = struct {
         _ = self.getC();
 
         var depth: usize = 1;
-        var quote: bool = false;
+        var sQuote: bool, var dQuote = .{ false, false };
         var multiLineComment: bool = false;
         var oneLineComment: bool = false;
         while (depth != 0) {
@@ -441,8 +441,8 @@ pub const LexTokenizer = struct {
                 self.peekN(2) orelse return error.UnexpectedEOF
             };
 
-            if (!quote and mem.eql(u8, &nextCs, "//")) oneLineComment = true;
-            if (!quote and mem.eql(u8, &nextCs, "/*")) multiLineComment = true;
+            if (!dQuote and mem.eql(u8, &nextCs, "//")) oneLineComment = true;
+            if (!dQuote and mem.eql(u8, &nextCs, "/*")) multiLineComment = true;
 
             if (oneLineComment and nextCs[0] != '\\' and nextCs[1] == '\n') 
             { _ = self.getN(2); oneLineComment = false; continue; }
@@ -455,10 +455,10 @@ pub const LexTokenizer = struct {
 
             switch (nextCs[0]) {
                 '\\' => _ = self.getC(),
-                '\'' => quote = !quote,
-                '"' => quote = !quote,
-                '{' => depth += if (!quote) 1 else 0,
-                '}' => depth -|= if (!quote) 1 else 0,
+                '\'' => sQuote = if (!dQuote) !sQuote else sQuote,
+                '"' => dQuote = if (!sQuote) !dQuote else dQuote,
+                '{' => depth += if (!dQuote and !sQuote) 1 else 0,
+                '}' => depth -|= if (!dQuote and !sQuote) 1 else 0,
                 else => {},
             }
             _ = self.getC();

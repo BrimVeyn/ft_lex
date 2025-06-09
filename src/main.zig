@@ -117,8 +117,8 @@ pub fn main() !u8 {
                 std.log.err("\"{s}\": {!}", .{rule.regex, e});
                 return 1;
             };
-            std.debug.print("\n\n\n\n\n\n\n\n\nREGEX:\n\n", .{});
-            head.dump(0);
+            // std.debug.print("\n\n\n\n\n\n\n\n\nREGEX:\n\n", .{});
+            // head.dump(0);
             try headList.append(head);
         }
 

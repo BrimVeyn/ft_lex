@@ -1,0 +1,89 @@
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#define YY_READ_SIZE 16
+
+static char *yy_buffer = NULL;
+static size_t yy_buf_size = 0;    // total allocated size
+static size_t yy_buf_len = 0;     // number of bytes currently filled
+static size_t yy_buf_pos = 0;     // current read position
+
+static char *yytext = NULL;
+static int yyleng = 0;
+
+FILE *yyin = NULL; // input stream
+FILE *yyout = NULL;
+
+static void buffer_realloc(size_t min_required) {
+    size_t new_size = yy_buf_size == 0 ? YY_READ_SIZE : yy_buf_size;
+
+    while (new_size < min_required) {
+        new_size *= 2;
+    }
+
+    char *new_buffer = realloc(yy_buffer, new_size);
+    if (!new_buffer) {
+        fprintf(stderr, "Out of memory while reallocating buffer\n");
+        exit(1);
+    }
+
+    yy_buffer = new_buffer;
+    yy_buf_size = new_size;
+}
+
+static void buffer_join(size_t min_required, char *buffer) {
+	if (yy_buf_size + min_required) {
+		buffer_realloc(yy_buf_size + min_required);
+	}
+
+	int i = 0;
+	while (i < min_required) {
+		yy_buffer[yy_buf_pos + i] = buffer[i];
+		i++;
+	}
+}
+
+static int yy_read_char(void) {
+    if (yy_buf_pos >= yy_buf_len) {
+		char buffer[YY_READ_SIZE];
+		memset(buffer, 0, YY_READ_SIZE);
+
+        int rsize = fread(buffer, 1, YY_READ_SIZE, yyin);
+		buffer_join(rsize, buffer);
+		yy_buf_len += rsize;
+
+        if (rsize == 0) return EOF;
+    }
+    return yy_buffer[yy_buf_pos++];
+}
+
+static void yy_unread_char(void) {
+    if (yy_buf_pos > 0) yy_buf_pos--;
+}
+
+static void yy_free_buffer(void) {
+    free(yy_buffer);
+    yy_buffer = NULL;
+    yy_buf_size = yy_buf_len = yy_buf_pos = 0;
+}
+
+int main(int ac, char *av[]) {
+    ++av; --ac;
+    if (ac > 0) {
+        yyin = fopen(*av, "r");
+    } else {
+        yyin = fopen("test.lang", "r");
+    }
+	yyout = stdout;
+
+
+	while (1) {
+		char result = yy_read_char();
+		printf("yy_buf_pos: %zu\n", yy_buf_pos);
+		printf("char: %d %c\n", result, result);
+		fwrite(&result, 1, 1, yyout);
+		if (result == EOF) break;
+	}
+
+	printf("\nBUFFER: %s\n", yy_buffer);
+}

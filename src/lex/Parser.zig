@@ -300,7 +300,7 @@ fn parseRules(self: *LexParser) !void {
     self.expandRules() catch |e| return self.logError(e);
     self.extractStartConditions() catch |e| return self.logError(e);
 
-    // for (self.rules.items) |item| std.debug.print("{}\n", .{item});
+    for (self.rules.items) |item| std.debug.print("{}\n", .{item});
 }
 
 fn parseUserSubroutines(self: *LexParser) !void {

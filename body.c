@@ -14,7 +14,7 @@ FILE *yyout = NULL;
 static int yy_read_char(void) {
     if (yy_buf_pos >= yy_buf_len) {
         yy_buf_len = fread(yy_buffer, 1, YY_BUF_SIZE, yyin);
-		// yy_buf_pos = 0;
+		yy_buf_pos = 0;
         if (yy_buf_len == 0) return EOF;
     }
     return yy_buffer[yy_buf_pos++];
@@ -30,6 +30,7 @@ static int yy_start;
 #define BEGIN(condition) ((yy_start) = (condition))
 #define YY_AT_BOL() (yy_buf_pos == 0 || (yy_buf_pos > 0 && yy_buffer[yy_buf_pos - 1] == '\n'))
 #define YY_BOL() ((yy_start >> 16))
+
 static inline int yy_action(int accept_id) {
     switch (accept_id) {
         case 1:
@@ -40,11 +41,6 @@ static inline int yy_action(int accept_id) {
         case 2:
 {
 	printf("Matched foobar+\n");
-}
-        break;
-        case 3:
-{
-	printf("Unknow character\n");
 }
         break;
         default:
@@ -86,7 +82,7 @@ int yylex(void) {
 
         while (1) {
             last_read_c = yy_read_char();
-			printf("Read: %d %d at pos: %d\n", last_read_c, last_read_c, yy_buf_pos);
+			/*printf("Read: %d %d at pos: %d\n", last_read_c, last_read_c, yy_buf_pos);*/
 
             if (last_read_c == EOF) break;
             last_read_c = (unsigned char) last_read_c;
@@ -104,16 +100,16 @@ int yylex(void) {
 			bol_state = bol_next_state;
             cur_pos = yy_buf_pos;
 
-			if (yy_accept[bol_state] > 0) {
+			if (bol_state != -1 && yy_accept[bol_state] > 0) {
 				bol_las = bol_state;
 				bol_lap = cur_pos;
-				// printf("Match bol with: %d %d\n", default_las, default_lap);
+				/*printf("Match bol with: %d %d\n", default_las, default_lap);*/
 			}
 
-            if (yy_accept[state] > 0) {
+            if (state != -1 && yy_accept[state] > 0) {
                 default_las = state;
                 default_lap = cur_pos;
-				// printf("Match normal with: %d %d\n", default_las, default_lap);
+				/*printf("Match normal with: %d %d\n", default_las, default_lap);*/
             }
         }
 
@@ -128,11 +124,11 @@ int yylex(void) {
 		}
 
 
+		/*printf("buf_pos: %d, default_lap: %d, default_las: %d\n", yy_buf_pos, default_lap, default_las);*/
         if (default_las > 0) {
-			printf("buf_pos: %d, default_lap: %d\n", yy_buf_pos, default_lap);
             // Backtrack
             while (yy_buf_pos > default_lap) {
-				// printf("pos: %d, default_lap: %d\n", yy_buf_pos, default_lap);
+				/*printf("pos: %d, default_lap: %d\n", yy_buf_pos, default_lap);*/
                 yy_unread_char();
             }
 
@@ -208,6 +204,8 @@ int main(int ac, char *av[]) {
     yyout = stdout;
     yylex();
 }
+
+
 
 
 
