@@ -1,0 +1,17 @@
+/* This is a test comment */
+input_test
+unput_test
+buffer_boundary
+
+#include <stdio.h>
+#include "local.h"
+
+"Test string with \n newline"
+
+12345 67.89e-10
+identifier _with_underscore
+
+/* Nested unput test */
+special_chars: !@#$%^&*()
+
+#invalid_directive

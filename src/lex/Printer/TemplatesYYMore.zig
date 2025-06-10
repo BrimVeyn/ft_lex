@@ -13,6 +13,8 @@ pub const bodyFirstPart = \\
 \\static size_t yy_buf_pos = 0;     // current read position
 \\static uint8_t yy_hold_char = 0;
 \\static int yy_hold_char_restored = 0; //used when calling input and unput in the same action
+\\static int yy_more_len = 0;
+\\static int yy_more_flag = 0;
 \\
 \\static char *yytext = NULL;
 \\static int yyleng = 0;
@@ -136,6 +138,8 @@ pub const bodyFirstPart = \\
 \\}
 \\
 \\int yymore(void) {
+\\    yy_more_len = yyleng;
+\\    yy_more_flag = 1;
 \\    return 0;
 \\}
 \\
@@ -145,113 +149,6 @@ pub const bodyFirstPart = \\
 \\
 \\
 ;
-
-pub const bodySecondPart = \\
-\\static inline int yy_next_state(int s, int ec) {
-\\    while (s != -1) {
-\\        if (yy_check[yy_base[s] + ec] == s)
-\\            return yy_next[yy_base[s] + ec];
-\\        s = yy_default[s];
-\\    }
-\\    return s;
-\\}
-\\
-\\// --- Core DFA scanning function ---
-\\int yylex(void) {
-\\    BEGIN(INITIAL);
-\\
-\\    if (!yyin) yyin = stdin;
-\\    if (!yyout) yyout = stdout;
-\\    int yy_failed_at_bol = 0;
-\\
-\\    while (1) {
-\\        int state = (yy_start & 0xFFFF);
-\\
-\\        int yy_at_bol = yy_failed_at_bol ? 0 : YY_AT_BOL();
-\\
-\\        state = yy_at_bol ? YY_BOL() : state;
-\\
-\\        yy_failed_at_bol = 0;
-\\
-\\        int last_accepting_state = -1;
-\\        int last_accepting_pos = -1;
-\\
-\\        int start_pos = yy_buf_pos;
-\\        int cur_pos = start_pos;
-\\        int last_read_c = -1;
-\\
-\\        while (1) {
-\\            last_read_c = yy_read_char();
-\\            if (last_read_c == EOF) break;
-\\
-\\            last_read_c = (unsigned char) last_read_c;
-\\
-\\            int sym = yy_ec[last_read_c];
-\\
-\\            /*fprintf(stderr, "-------- EC: %d\n", sym);*/
-\\            /*fprintf(stderr, "-------- State: %d\n", state);*/
-\\            int trans_index = yy_base[state] + sym;
-\\            /*fprintf(stderr, "-------- TransIndex: %d\n", trans_index);*/
-\\            int next_state;
-\\
-\\            next_state = yy_next_state(state, sym);
-\\
-\\            if (next_state < 0) {
-\\                break;
-\\            }
-\\
-\\            state = next_state;
-\\            cur_pos = yy_buf_pos;
-\\
-\\            if (yy_accept[state] > 0) {
-\\                last_accepting_state = state;
-\\                last_accepting_pos = cur_pos;
-\\            }
-\\        }
-\\        // fprintf(stderr, "BREAK\n");
-\\        if (last_accepting_state <= 0 && yy_at_bol) {
-\\            while (yy_buf_pos > start_pos) {
-\\                yy_unread_char();
-\\            }
-\\            yy_failed_at_bol = 1;
-\\            continue;
-\\        }
-\\
-\\        if (last_accepting_state > 0) {
-\\            // Backtrack
-\\            while (yy_buf_pos > last_accepting_pos) {
-\\                yy_unread_char();
-\\            }
-\\
-\\            yyleng = last_accepting_pos - start_pos;
-\\            yytext = &yy_buffer[start_pos];
-\\
-\\            //Save the last read character, in case yytext is used as a string in any action
-\\            unsigned char yy_hold_char = yytext[yyleng];
-\\            yytext[yyleng] = '\0'; 
-\\
-\\            int accept_id = yy_accept[last_accepting_state];
-\\            yy_action(accept_id);
-\\
-\\            yytext[yyleng] = yy_hold_char;
-\\            continue;
-\\        }
-\\
-\\        //DO BEFORE ACTION
-\\        yytext = &yy_buffer[start_pos];
-\\        yyleng = (int) (yy_buf_pos - start_pos);
-\\
-\\        //ECHO
-\\        fwrite(yytext, yyleng, 1, yyout);
-\\
-\\        if (last_read_c == -1 || yy_buffer[yy_buf_pos] == 0) break;
-\\    }
-\\
-\\    return 0;
-\\}
-\\
-;
-
 
 pub const bodySecondPartWithTc = \\
 \\static inline int yy_next_state(int s, int ec) {
@@ -283,6 +180,7 @@ pub const bodySecondPartWithTc = \\
 \\        int cur_pos = start_pos;
 \\        int last_read_c = -1;
 \\        // printf("state: %d, bol_state: %d\n", state, bol_state);
+\\        yy_more_flag = 0;
 \\
 \\        while (1) {
 \\            last_read_c = yy_read_char();
@@ -372,8 +270,16 @@ pub const bodySecondPartWithTc = \\
 \\                default_lap = tc_lap;
 \\            }
 \\
-\\            yyleng = default_lap - start_pos;
-\\            yytext = &yy_buffer[start_pos];
+\\            if (yy_more_len != 0) {
+\\                /*printf("Start pos: %d, yyleng: %d\n", start_pos, yyleng);*/
+\\                yytext = &yy_buffer[start_pos - yyleng];
+\\                yyleng += (default_lap - start_pos);
+\\            
+\\            } else {
+\\                yytext = &yy_buffer[start_pos];
+\\                yyleng = default_lap - start_pos;
+\\                yy_more_len = 0;
+\\            }
 \\
 \\            //Save the last read character, in case yytext is used as a string in any action
 \\            yy_hold_char = yytext[yyleng];
@@ -381,6 +287,7 @@ pub const bodySecondPartWithTc = \\
 \\            yy_hold_char_restored = 0;
 \\
 \\            yy_action(accept_id);
+\\            if (!yy_more_flag) yy_more_len = 0;
 \\
 \\            yytext[yyleng] = yy_hold_char;
 \\            // printf("Continue\n");

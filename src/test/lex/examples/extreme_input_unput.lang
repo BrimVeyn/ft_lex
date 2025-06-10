@@ -1,0 +1,22 @@
+// --- Read one character ---
+static int yy_read_char(void) {
+    if (yy_buf_pos >= yy_buf_len) {
+        yy_buf_len = fread(yy_buffer, 1, YY_BUF_SIZE, yyin);
+		yy_buf_pos = 0;
+        if (yy_buf_len == 0) return EOF;
+    }
+    return yy_buffer[yy_buf_pos++];
+}
+
+// --- Push back one character ---
+inline static void yy_unread_char(void) {
+    if (yy_buf_pos > 0) yy_buf_pos--;
+}
+
+static int yy_start;
+
+#define BEGIN(condition) ((yy_start) = (condition))
+#define YY_AT_BOL() (yy_buf_pos == 0 || (yy_buf_pos > 0 && yy_buffer[yy_buf_pos - 1] == '\n'))
+#define YY_BOL() ((yy_start >> 16))
+
+

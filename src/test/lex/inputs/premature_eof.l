@@ -1,36 +1,34 @@
+/*
+ * yymore.lex: An example of using yymore()
+ *             to good effect.
+ */
+
 %{
-#include <stdio.h>
-int line_num = 1;
+#include <memory.h>
+
+void yyerror(char *message)
+{
+  printf("Error: %s\n",message);
+}
+
 %}
 
-/* Define start conditions */
-%x HTML CODE
+%x STRING
 
 %%
+\"   BEGIN(STRING);
 
-^section            { printf("[Line %d] Section header at line start\n", line_num); }
+<STRING>[^\\\n"]*  yymore();
+<STRING>\n         yyerror("Unterminated string."); BEGIN(INITIAL);
+<STRING>\\\n      {
+                     bcopy(yytext,yytext+2,yyleng-2);
+                     yytext += 2; yyleng -= 2;
+                     yymore();
+                  }
+<STRING>\"        {
+                     yyleng -= 1; yytext[yyleng] = '\0';
+                     printf("string = \"%s\"",yytext); BEGIN(INITIAL);
+                  }
 
-<INITIAL>"<html>"   { printf("[Line %d] Entering HTML mode\n", line_num); BEGIN(HTML); }
-
-[a-zA-Z_]+" "/:[0-9]+ { printf("[Line %d] Identifier before colon-number context: %s\n", line_num, yytext); }
-
-data/=[^\s]         { printf("[Line %d] Found 'data' before assignment\n", line_num); }
-
-[a-zA-Z_]+          { printf("[Line %d] Identifier: %s\n", line_num, yytext); }
-
-\n                  { line_num++; }
-
-[ \t\r]+            { /* skip */ }
-
-<HTML>"</html>"     { printf("[Line %d] Exiting HTML mode\n", line_num); BEGIN(INITIAL); }
-
-<HTML><[^>]+>       { printf("[Line %d] HTML Tag: %s\n", line_num, yytext); }
-
-<HTML>[^<\n]+       { printf("[Line %d] HTML Text: %s\n", line_num, yytext); }
-
-<HTML>\n            { line_num++; }
-
-<HTML>.             { printf("[Line %d] HTML Unknown: %s\n", line_num, yytext); }
-
+.|\n printf("Unknown: %c\n", *yytext);
 %%
-

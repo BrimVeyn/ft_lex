@@ -100,8 +100,8 @@ fn produceFtLexOutput(alloc: std.mem.Allocator, lFile: []const u8, langFile: []c
     const argWriter = argStream.writer();
 
     try argWriter.print(
-        \\clang {0s} -o {2s}ft_lex_{1s} &&
-        \\{2s}ft_lex_{1s} {3s} > {2s}ft_lex_{1s}.output
+        \\clang {0s} -o {2s}{1s}ftlex &&
+        \\{2s}{1s}ftlex < {3s} > {2s}{1s}ftlex.output
     , .{buffer[0..stream.pos], std.fs.path.basename(lFile), outputDir, langFile});
 
     // std.debug.print("{s}\n\n\n", .{argBuffer[0..argStream.pos]});
@@ -137,8 +137,8 @@ fn produceFlexOutput(alloc: std.mem.Allocator, lFile: []const u8, langFile: []co
 
     try argWriter.print(
         \\flex -o {0s} -i {1s} &&
-        \\clang {0s} -o {3s}flex_{2s} /home/bvan-pae/Documents/homebrew/opt/flex/lib/libfl.a &&
-        \\{3s}flex_{2s} > {3s}flex_{2s}.output < {4s}
+        \\clang {0s} -o {3s}{2s}flex /home/bvan-pae/Documents/homebrew/opt/flex/lib/libfl.a &&
+        \\{3s}{2s}flex > {3s}{2s}flex.output < {4s}
     , .{buffer[0..stream.pos], lFile, std.fs.path.basename(lFile), outputDir, langFile});
 
     // std.debug.print("{s}\n\n\n", .{argBuffer[0..argStream.pos]});
@@ -176,7 +176,7 @@ fn compareOutput(lFile: []const u8, langFile: []const u8) !void {
     const argWriter = argStream.writer();
 
     try argWriter.print(
-        \\diff {0s}ft_lex_{1s}.output {0s}flex_{1s}.output
+        \\diff {0s}{1s}ftlex.output {0s}{1s}flex.output
     , .{outputDir, std.fs.path.basename(lFile)});
 
     // std.debug.print("{s}\n\n\n", .{argBuffer[0..argStream.pos]});
@@ -246,8 +246,22 @@ test "C99 ANSI syntax" {
 
 test "Easy trailing context" {
     try compareOutput(
-        "src/test/lex/examples/easy_trailing_context.l",
-        "src/test/lex/examples/easy_trailing_context.lang",
+        "src/test/lex/examples/easy_tc.l",
+        "src/test/lex/examples/easy_tc.lang",
+    );
+}
+
+test "Hard trailing context" {
+    try compareOutput(
+        "src/test/lex/examples/hard_tc.l",
+        "src/test/lex/examples/hard_tc.lang",
+    );
+}
+
+test "Extreme trailing context" {
+    try compareOutput(
+        "src/test/lex/examples/extreme_tc.l",
+        "src/test/lex/examples/extreme_tc.lang",
     );
 }
 
@@ -255,5 +269,33 @@ test "Wc" {
     try compareOutput(
         "src/test/lex/examples/wc.l",
         "src/test/lex/examples/wc.lang",
+    );
+}
+
+test "Easy input() and unput()" {
+    try compareOutput(
+        "src/test/lex/examples/easy_input_unput.l",
+        "src/test/lex/examples/easy_input_unput.lang",
+    );
+}
+
+test "Hard input() and unput()" {
+    try compareOutput(
+        "src/test/lex/examples/hard_input_unput.l",
+        "src/test/lex/examples/hard_input_unput.lang",
+    );
+}
+
+test "Hard input() and unput() 2" {
+    try compareOutput(
+        "src/test/lex/examples/hard_input_unput_2.l",
+        "src/test/lex/examples/hard_input_unput_2.lang",
+    );
+}
+
+test "Extreme input() and unput()" {
+    try compareOutput(
+        "src/test/lex/examples/extreme_input_unput.l",
+        "src/test/lex/examples/extreme_input_unput.lang",
     );
 }

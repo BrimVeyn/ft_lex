@@ -10,6 +10,7 @@ const LexOptions          =  rootModule.LexOptions;
 const DFA                 =  DFAModule.DFA;
 
 const Templates           =  @import("Templates.zig");
+const TemplatesYYMore     =  @import("TemplatesYYMore.zig");
 
 const MAX_ITEM_PER_ROW: usize = 10;
 
@@ -126,9 +127,9 @@ fn printUserCode(lexParser: LexParser, opts: LexOptions, writer: anytype) !void 
 }
 
 fn printBody(lexParser: LexParser, writer: anytype) !void {
-    _ = try writer.write(Templates.bodyFirstPart);
+    _ = try writer.write(TemplatesYYMore.bodyFirstPart);
     try printActions(lexParser, writer);
-    _ = try writer.write(Templates.bodySecondPartWithTc);
+    _ = try writer.write(TemplatesYYMore.bodySecondPartWithTc);
 }
 
 
