@@ -26,6 +26,7 @@ const EC                = @import("regex/EquivalenceClasses.zig");
 const LexParser         = @import("lex/Parser.zig");
 
 const Printer           = @import("lex/Printer/Printer.zig");
+const G                 = @import("globals.zig");
 
 comptime {
     _ = @import("test/regex/Tokenizer.zig");
@@ -37,17 +38,10 @@ comptime {
 
 const   BUF_SIZE: usize = 4096;
 
-pub const LexOptions = struct {
-    inputName: []const u8  =  "stdin",
-    t: bool                =  false,
-    n: bool                =  false,
-    v: bool                =  false,
-};
 
-fn parseOptions(args: [][:0]u8) !struct {LexOptions, usize} {
-    var opts = LexOptions{};
+fn parseOptions(args: [][:0]u8) !struct {G.LexOptions, usize} {
     if (args.len == 1) {
-        return .{opts, 1};
+        return .{G.options, 1};
     }
 
     var arg_it: usize = 1;
@@ -58,9 +52,9 @@ fn parseOptions(args: [][:0]u8) !struct {LexOptions, usize} {
         const opt = arg[1..];
         for (opt) |ch| {
             switch (ch) {
-                't' => opts.t = true,
-                'n' => opts.n = true,
-                'v' => opts.v = true,
+                't' => G.options.t = true,
+                'n' => G.options.n = true,
+                'v' => G.options.v = true,
                 else => {
                     print("ft_lex: Unrecognized option `{s}'\n", .{opt});
                     return error.UnrecognizedOption;
@@ -69,7 +63,7 @@ fn parseOptions(args: [][:0]u8) !struct {LexOptions, usize} {
         }
         arg_it += 1;
     }
-    return .{opts, arg_it};
+    return .{G.options, arg_it};
 }
 
 const DebugAllocatorOptions: std.heap.DebugAllocatorConfig = .{
@@ -95,7 +89,7 @@ pub fn main() !u8 {
     };
     //We've consumed all options and there's no file
     if (args.len == arg_it) {
-        @panic("Not yet implemtented");
+        @panic("Not implemented, please provide a file as an argument");
     } else {
         options.inputName = args[arg_it];
         var lexParser = try LexParser.init(alloc, args[arg_it]);
@@ -131,7 +125,6 @@ pub fn main() !u8 {
         defer nfaList.deinit();
 
         for (headList.items) |head| {
-            nfaBuilder.reset();
             const nfa = nfaBuilder.astToNfa(head) catch |e| {
                 std.log.err("NFA: {!}", .{e});
                 continue;
@@ -180,7 +173,7 @@ pub fn main() !u8 {
         try Printer.print(
             ec, DFAs,
             bol_DFAs, tc_DFAs, finalDfa,
-            lexParser, options
+            lexParser
         );
     }
     return 0;

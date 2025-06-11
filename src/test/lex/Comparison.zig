@@ -15,8 +15,9 @@ const RegexParser       = ParserModule.Parser;
 const RegexNode         = ParserModule.RegexNode;
 const Printer           = @import("../../lex/Printer/Printer.zig");
 
-var     yy_ec: [256]u8  = .{0} ** 256;
-const outputDir = "src/test/lex/outputs/";
+var   yy_ec: [256]u8     = .{0} ** 256;
+const outputDir          = "src/test/lex/outputs/";
+const libPath            = "src/libl/libl.a";
 
 ///Runs ft_lex, compiles its output file and run it on the langFile
 ///
@@ -25,6 +26,7 @@ const outputDir = "src/test/lex/outputs/";
 fn produceFtLexOutput(alloc: std.mem.Allocator, lFile: []const u8, langFile: []const u8) !void {
     //NOTE: Reset this global otherwise we can't run more than one test sequentially
     DFAMinimizer.offset = 0;
+
 
     var lexParser = try LexParser.init(alloc, @constCast(lFile));
     defer lexParser.deinit();
@@ -93,16 +95,16 @@ fn produceFtLexOutput(alloc: std.mem.Allocator, lFile: []const u8, langFile: []c
     var file = try std.fs.cwd().createFile(buffer[0..stream.pos], .{});
     defer file.close();
 
-    try Printer.printTo(ec, DFAs, bol_DFAs, tc_DFAs, finalDfa, lexParser, .{}, file.writer());
+    try Printer.printTo(ec, DFAs, bol_DFAs, tc_DFAs, finalDfa, lexParser, file.writer());
 
     var argBuffer: [2048]u8 = .{0} ** 2048;
     var argStream = std.io.fixedBufferStream(&argBuffer);
     const argWriter = argStream.writer();
 
     try argWriter.print(
-        \\clang {0s} -o {2s}{1s}ftlex &&
+        \\clang {0s} -o {2s}{1s}ftlex {4s} &&
         \\{2s}{1s}ftlex < {3s} > {2s}{1s}ftlex.output
-    , .{buffer[0..stream.pos], std.fs.path.basename(lFile), outputDir, langFile});
+    , .{buffer[0..stream.pos], std.fs.path.basename(lFile), outputDir, langFile, libPath});
 
     // std.debug.print("{s}\n\n\n", .{argBuffer[0..argStream.pos]});
 
@@ -113,8 +115,6 @@ fn produceFtLexOutput(alloc: std.mem.Allocator, lFile: []const u8, langFile: []c
     child.stdin_behavior = .Ignore;
     child.stdout_behavior = .Ignore;
     child.stderr_behavior = .Ignore;
-
-    _ = try child.spawnAndWait();
 
     const term = try child.spawnAndWait();
     try std.testing.expectEqual(0, term.Exited);
@@ -297,5 +297,26 @@ test "Extreme input() and unput()" {
     try compareOutput(
         "src/test/lex/examples/extreme_input_unput.l",
         "src/test/lex/examples/extreme_input_unput.lang",
+    );
+}
+
+test "Easy yymore()" {
+    try compareOutput(
+        "src/test/lex/examples/easy_yymore.l",
+        "src/test/lex/examples/easy_yymore.lang",
+    );
+}
+
+test "Medium yymore()" {
+    try compareOutput(
+        "src/test/lex/examples/medium_yymore.l",
+        "src/test/lex/examples/medium_yymore.lang",
+    );
+}
+
+test "Easy yyless()" {
+    try compareOutput(
+        "src/test/lex/examples/easy_yyless.l",
+        "src/test/lex/examples/easy_yyless.lang"
     );
 }

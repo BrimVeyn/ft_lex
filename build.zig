@@ -3,6 +3,36 @@ const Compile = std.Build.Step.Compile;
 const LazyPath = std.Build.LazyPath;
 const GeneratedFile = std.Build.GeneratedFile;
 
+const liblPath: []const u8 = "src/libl/libl.a";
+
+fn fileExist(path: []const u8) bool {
+    std.fs.cwd().access(path, .{}) catch return false;
+    return true;
+}
+
+fn ensureLiblIsBuilt(self: *std.Build.Step, options: std.Build.Step.MakeOptions) anyerror!void {
+    _ = self; _ = options;
+    if (!fileExist(liblPath)) {
+        std.log.info("usage: zig build libl", .{});
+        @panic("You must build the libl before running tests");
+    }
+}
+
+fn buildLibl(self: *std.Build.Step, options: std.Build.Step.MakeOptions) anyerror!void {
+    _ = self; _ = options;
+
+    var child = std.process.Child.init(&[_][]const u8{
+        "make", "-C", "src/libl",
+    }, std.heap.page_allocator);
+
+    child.stdin_behavior = .Ignore;
+    child.stdout_behavior = .Ignore;
+    child.stderr_behavior = .Ignore;
+
+    const term = try child.spawnAndWait();
+    std.debug.assert(term.Exited == 0);
+}
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -34,9 +64,16 @@ pub fn build(b: *std.Build) void {
         .root_module = exe_mod,
     });
 
+    const libl_step = b.step("libl", "Build libl static library");
+    libl_step.makeFn = buildLibl;
+
+    const ensure_libl_is_built = b.addRunArtifact(exe_unit_tests);
+    ensure_libl_is_built.step.makeFn = ensureLiblIsBuilt;
+
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
 
     const test_step = b.step("test", "Run unit tests");
+    test_step.dependOn(&ensure_libl_is_built.step);
     test_step.dependOn(&run_exe_unit_tests.step);
 }
 

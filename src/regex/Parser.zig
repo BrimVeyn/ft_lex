@@ -47,7 +47,6 @@ pub const RegexNode = union(enum) {
     Char: u8,
     Group: *RegexNode,
     AnchorStart: *RegexNode,
-    AnchorEnd: *RegexNode,
     CharClass: struct {
         negate: bool,
         range: std.StaticBitSet(256),
@@ -67,10 +66,6 @@ pub const RegexNode = union(enum) {
     Repetition: struct {
         min: usize,
         max: ?usize,
-        left: *RegexNode,
-    },
-    StartCondition: struct {
-        name: [64:0]u8,
         left: *RegexNode,
     },
 

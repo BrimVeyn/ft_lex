@@ -1,12 +1,15 @@
 const std                 = @import("std");
-const ParserModule        = @import("Parser.zig");
 const ParserMakers        = @import("ParserMakers.zig");
 const NFADump             = @import("NFADump.zig");
 const DFAModule           = @import("DFA.zig");
 const Rules               = @import("../lex/Rules.zig");
 const LexParser           = @import("../lex/Parser.zig");
+const G                   = @import("../globals.zig");
 const DFA                 = DFAModule.DFA;
 const ArrayList           = std.ArrayList;
+
+const ParserModule        = @import("Parser.zig");
+const RegexNode           = ParserModule.RegexNode;
 
 pub const StateId         = usize;
 pub const NFA_LIMIT       = 32_000;
@@ -70,12 +73,38 @@ pub const NFAError = error {
 pub const NFA = struct {
     start          : *State,
     accept         : *State,
+    parseTree      : *RegexNode = undefined,
     lookAhead      : ?*NFA = null,
     matchStart     : bool = false,
-    matchEnd       : bool = false,
-    start_condition: ?[64:0]u8 = null,
 
     pub const stringify = NFADump.stringify;
+
+    fn lengthRec(parseTree: *RegexNode) ?usize {
+        switch (parseTree.*) {
+            .Char => return 1,
+            .CharClass => return 1,
+            .Concat => |e| {
+                const l, const r = .{ lengthRec(e.left), lengthRec(e.right) };
+                return if (l == null or r == null) null else l.? + r.?;
+            },
+            .Alternation => |e| {
+                const l, const r = .{ lengthRec(e.left), lengthRec(e.right) };
+                return if (l == null or r == null or l.? != r.?) null else l.?;
+            },
+            .Repetition => |e| return {
+                if (e.max) |max| return if (max == e.min)
+                    max * if (lengthRec(e.left)) |l| l else return null else null;
+                return null;
+            },
+            .Group => |e| return lengthRec(e),
+            .AnchorStart => |e| return lengthRec(e),
+            .TrailingContext => |e| return lengthRec(e.left),
+        }
+    }
+
+    pub fn length(self: NFA) ?usize {
+        return lengthRec(self.parseTree);
+    }
 };
 
 pub const NFABuilder = struct {
@@ -117,11 +146,15 @@ pub const NFABuilder = struct {
         return node;
     }
 
-    pub fn reset(self: *NFABuilder) void {
+
+    pub fn astToNfa(self: *NFABuilder, node: *RegexNode) NFAError!NFA {
         self.depth = 0;
+        var nfa = try self.astToNfaRec(node);
+        nfa.parseTree = node;
+        return nfa;
     }
 
-    pub fn astToNfa(self: *NFABuilder, node: *ParserModule.RegexNode) NFAError!NFA {
+    pub fn astToNfaRec(self: *NFABuilder, node: *RegexNode) NFAError!NFA {
         self.depth += 1;
 
         if (self.next_id > NFA_LIMIT or self.depth > RECURSION_LIMIT)
@@ -137,8 +170,6 @@ pub const NFABuilder = struct {
                 inner.matchStart = true;
                 return inner;
             },
-            .StartCondition => { unreachable; },
-            .AnchorEnd => { unreachable; },
             .Char => {
                 const start = try self.makeState(self.next_id);
                 self.next_id += 1;
@@ -297,10 +328,6 @@ pub const NFABuilder = struct {
 
                 }
             },
-            // else => {
-            //     std.log.debug("Unhandled NFA transformation for regexNode of type: {s}", .{@tagName(node.*)});
-            //     return error.NFAUnhandled;
-            // }
         };
     }
 
@@ -333,13 +360,22 @@ pub const NFABuilder = struct {
             acceptList.deinit(); bol_acceptList.deinit();
         }
 
-        for (NFAs, 0..) |inner, it| {
-            if (inner.lookAhead != null) {
+        for (NFAs, lexParser.rules.items, 0..) |inner, *rule, it| {
+            if (inner.lookAhead) |lookAhead| {
                 //TODO: Determine if the trailing context and its rule are of arbitrary length.
                 //If not we can omit the backtracking part of the matcher and add a precomputed backtracking in
                 //the action associated with the rule.
+                if (inner.length()) |len| {
+                    std.log.info("INNER LEN: {d}", .{len});
+                    rule.trailingContext = .{ .side = .Left, .value = len, };
+                } else if (lookAhead.length()) |len| {
+                    std.log.info("LOOKAHEAD LEN: {d}", .{len});
+                    rule.trailingContext = .{ .side = .Right, .value = len };
+                } else {
+                    std.log.info("Both are of variable length", .{});
+                    G.options.needTcBacktracking = true;
+                }
 
-                lexParser.rules.items[it].trailingContext = true;
                 var start = try self.makeState(0);
                 try start.transitions.append(.{ .symbol = .{ .epsilon = {} }, .to = inner.start});
                 try tc_acceptList.append(.{ .state = inner.accept, .priority = it });

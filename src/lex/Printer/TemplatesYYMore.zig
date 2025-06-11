@@ -2,36 +2,57 @@ const Templates = @This();
 
 pub const bodyFirstPart = \\
 \\#include <stdlib.h>
-\\#include <unistd.h>
 \\#include <stdio.h>
 \\#include <string.h>
-\\#define YY_READ_SIZE 16
+\\#define YY_READ_SIZE 256
 \\
-\\static char *yy_buffer = NULL;
+\\//Extern variables needed by the libl
+\\extern int yymore(void);
+\\extern int yyless(int);
+\\extern int input(void);
+\\extern int unput(int);
+\\extern int yywrap(void);
+\\
+\\extern void buffer_realloc(size_t);
+\\extern int yy_read_char(void);
+\\
+\\extern int yyleng;
+\\extern char *yytext;
+\\extern uint8_t yy_hold_char;
+\\extern size_t yy_buf_pos;
+\\extern int yy_more_flag;
+\\extern int yy_more_len;
+\\extern int yy_hold_char_restored;
+\\extern char *yy_buffer;
+\\extern size_t yy_buf_len;
+\\
 \\static size_t yy_buf_size = 0;    // total allocated size
-\\static size_t yy_buf_len = 0;     // number of bytes currently filled
-\\static size_t yy_buf_pos = 0;     // current read position
-\\static uint8_t yy_hold_char = 0;
-\\static int yy_hold_char_restored = 0; //used when calling input and unput in the same action
-\\static int yy_more_len = 0;
-\\static int yy_more_flag = 0;
+\\static int yy_interactive = 0;
+\\static int yy_start;
 \\
-\\static char *yytext = NULL;
-\\static int yyleng = 0;
-\\
+\\//Global initialization
+\\char *yy_buffer = NULL;
+\\size_t yy_buf_len = 0;     // number of bytes currently filled
+\\size_t yy_buf_pos = 0;     // current read position
+\\int yy_hold_char_restored = 0; //used when calling input and unput in the same action
+\\uint8_t yy_hold_char = 0;
+\\char *yytext = NULL;
+\\int yyleng = 0;
 \\FILE *yyin = NULL; // input stream
 \\FILE *yyout = NULL;
 \\
-\\static int yy_interactive = 0;
+\\//yymore specific vairables
+\\int yy_more_len = 0;
+\\int yy_more_flag = 0;
 \\
-\\static void buffer_realloc(size_t min_required) {
+\\
+\\void buffer_realloc(size_t min_required) {
 \\    size_t new_size = yy_buf_size == 0 ? YY_READ_SIZE : yy_buf_size;
 \\
 \\    if (yy_buf_size >= min_required) return ;
 \\
 \\    while (new_size < min_required)
 \\        new_size *= 2;
-\\
 \\
 \\    char *new_buffer = realloc(yy_buffer, new_size);
 \\    if (!new_buffer) {
@@ -58,7 +79,7 @@ pub const bodyFirstPart = \\
 \\    yy_buffer[yy_buf_len++] = c;
 \\}
 \\
-\\static int yy_read_char(void) {
+\\int yy_read_char(void) {
 \\    if (yy_buf_pos >= yy_buf_len) {
 \\        if (yy_interactive) {
 \\            char c = '*';
@@ -89,68 +110,23 @@ pub const bodyFirstPart = \\
 \\    return yy_buffer[yy_buf_pos++];
 \\}
 \\
-\\static inline void yy_unread_char(void) {
-\\    if (yy_buf_pos > 0) yy_buf_pos--;
-\\}
 \\
 \\static void yy_free_buffer(void) {
 \\    free(yy_buffer);
 \\    yy_buffer = NULL;
 \\    yy_buf_size = yy_buf_len = yy_buf_pos = 0;
 \\}
-\\static int yy_start;
+\\
 \\
 \\#define ECHO do { if (fwrite( yytext, (size_t) yyleng, 1, yyout )) {} } while (0)
 \\#define BEGIN(condition) ((yy_start) = (condition))
 \\#define YY_AT_BOL() (yy_buf_pos == 0 || (yy_buf_pos > 0 && yy_buffer[yy_buf_pos - 1] == '\n'))
 \\#define YY_BOL() ((yy_start >> 16))
 \\
-\\int input(void) {
-\\    if (!yy_hold_char_restored) {
-\\        yytext[yyleng] = yy_hold_char;
-\\        yy_hold_char_restored = 1;
-\\    }
-\\    int c = yy_read_char();
-\\    return c == EOF ? 0 : c;
-\\}
-\\
-\\void unput(int c) {
-\\    char *yy_cp;
-\\
-\\    buffer_realloc(yy_buf_len + 1);
-\\
-\\    if (!yy_hold_char_restored) {
-\\        yy_cp = &yy_buffer[yy_buf_pos];
-\\        *yy_cp = yy_hold_char;
-\\    }
-\\
-\\    memmove(&yy_buffer[yy_buf_pos + 1], &yy_buffer[yy_buf_pos], (yy_buf_len - yy_buf_pos));
-\\    yy_buffer[yy_buf_pos] = (unsigned char) c;
-\\    yy_buf_len += 1;
-\\
-\\    if (!yy_hold_char_restored) {
-\\        yy_hold_char = *yy_cp;
-\\    }
-\\}
-\\
-\\int yywrap(void) {
-\\    return 1;
-\\}
-\\
-\\int yymore(void) {
-\\    yy_more_len = yyleng;
-\\    yy_more_flag = 1;
-\\    return 0;
-\\}
-\\
-\\int yyless(int n) {
-\\    return 0;
-\\}
-\\
 \\
 ;
 
-pub const bodySecondPartWithTc = \\
+pub const sectionTwo = \\
 \\static inline int yy_next_state(int s, int ec) {
 \\    while (s != -1) {
 \\        if (yy_check[yy_base[s] + ec] == s)
@@ -163,6 +139,10 @@ pub const bodySecondPartWithTc = \\
 \\// --- Core DFA scanning function ---
 \\int yylex(void) {
 \\    BEGIN(INITIAL);
+\\//Added if the scanner is used in reentrant mode
+\\    if (yy_hold_char && !yy_hold_char_restored) {
+\\        yy_buffer[yy_buf_pos] = yy_hold_char;
+\\    }
 \\
 \\    if (!yyin) yyin = stdin;
 \\    if (!yyout) yyout = stdout;
@@ -229,15 +209,16 @@ pub const bodySecondPartWithTc = \\
 \\        /*printf("buf_pos: %d, default_lap: %d, default_las: %d\n", yy_buf_pos, default_lap, default_las);*/
 \\        if (default_las > 0) {
 \\            // Backtrack
-\\            while (yy_buf_pos > default_lap) {
-\\                /*printf("pos: %d, default_lap: %d\n", yy_buf_pos, default_lap);*/
-\\                yy_unread_char();
-\\            }
+\\            yy_buf_pos = default_lap;
 \\
 \\            int accept_id = yy_accept[default_las];
 \\
+\\
+;
+
+pub const tcBacktracking = \\
 \\            if (yy_acclist[accept_id] != 0) {
-\\                while (yy_buf_pos > start_pos) yy_unread_char();
+\\                yy_buf_pos = start_pos;
 \\
 \\                // printf("Started backtraking\n");
 \\                int tc_state = yy_acclist[accept_id];
@@ -266,9 +247,12 @@ pub const bodySecondPartWithTc = \\
 \\                        tc_lap = tc_cur_pos;
 \\                    }
 \\                }
-\\                while (yy_buf_pos > tc_lap) yy_unread_char();
+\\                yy_buf_pos = tc_lap;
 \\                default_lap = tc_lap;
 \\            }
+;
+
+pub const sectionThree = \\
 \\
 \\            if (yy_more_len != 0) {
 \\                /*printf("Start pos: %d, yyleng: %d\n", start_pos, yyleng);*/
@@ -286,10 +270,15 @@ pub const bodySecondPartWithTc = \\
 \\            yytext[yyleng] = '\0'; 
 \\            yy_hold_char_restored = 0;
 \\
-\\            yy_action(accept_id);
+\\
+;
+
+pub const sectionFour = \\
 \\            if (!yy_more_flag) yy_more_len = 0;
 \\
-\\            yytext[yyleng] = yy_hold_char;
+\\            if (!yy_hold_char_restored) {
+\\                yy_buffer[yy_buf_pos] = yy_hold_char;
+\\            }
 \\            // printf("Continue\n");
 \\            continue;
 \\        }
@@ -305,21 +294,9 @@ pub const bodySecondPartWithTc = \\
 \\
 \\    yy_free_buffer();
 \\    fclose(yyin);
+\\    yywrap();
 \\
 \\    return 0;
-\\}
-\\
-;
-
-
-pub const defaultMain = \\
-\\int main(int ac, char *av[]) {
-\\    ++av; --ac;
-\\    if (ac > 0) {
-\\        yyin = fopen(*av, "r");
-\\    }
-\\    yyout = stdout;
-\\    yylex();
 \\}
 \\
 ;

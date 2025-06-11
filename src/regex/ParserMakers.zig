@@ -54,36 +54,6 @@ pub fn makeQuote(self: *Parser) ParserError!*RegexNode {
     });
 }
 
-pub fn makeStartCondition(self: *Parser) ParserError!*RegexNode {
-    std.debug.assert(self.currentEql(.StartConditionOpen));
-    self.tokenizer.changeContext(.BracketExp);
-    _ = self.advance();
-    var buffer: [64:0]u8 = .{0} ** 64;
-    var i: usize = 0;
-    while (true) {
-        if (self.currentEql(.Eof))
-            return error.UnexpectedEof;
-        if (self.currentEql(.{ .Char = '>' })) {
-            break;
-        }
-        buffer[i] = self.current.Char;
-        i += 1;
-        _ = self.advance();
-    }
-    self.tokenizer.changeContext(.RegexExpCommon);
-    if (i == 0 or !self.currentEql(.{ .Char = '>' })) {
-        return error.BadStartConditionList;
-    }
-    _ = self.advance();
-
-    return makeNode(self, .{
-        .StartCondition = .{
-            .name = buffer,
-            .left = try self.parseExpr(.None) 
-        } 
-    });
-}
-
 pub fn getEscaped(self: *Parser) !Token {
     var is_hexa = false;
     var is_octal = false;

@@ -111,10 +111,6 @@ WHITESPACE [ \t\r]
 
 %%
 
-int yywrap() {
-    return 1;
-}
-
 int main() {
     printf("Starting lexer test...\n");
     yylex();

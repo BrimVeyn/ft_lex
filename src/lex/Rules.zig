@@ -4,11 +4,21 @@ const DefinitionsModule     = @import("Definitions.zig");
 const Definitions           = DefinitionsModule.Definitions;
 const SCType                = Definitions.StartConditions.SCType;
 
+pub const TrailingContextInfo = struct {
+    pub const Side = enum {
+        Left,
+        Right,
+    };
+
+    value: ?usize = null,
+    side: Side = .Left,      
+};
+
 pub const Rule = struct {
     regex: []u8,
     code: Definitions.CCode,
     sc: std.ArrayList(SCType) = undefined,
-    trailingContext: bool = false,
+    trailingContext: TrailingContextInfo = .{},
 
     pub fn init(alloc: std.mem.Allocator, regex: []u8, code: Definitions.CCode) Rule {
         return .{

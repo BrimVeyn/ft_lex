@@ -76,11 +76,6 @@ pub fn dump(self: *const RegexNode, indent: usize) void {
             self.AnchorStart.dump(indent + 1);
             std.debug.print("{s})\n", .{ pad });
         },
-        .AnchorEnd => {
-            std.debug.print("{s}{s}{s}(\n", .{ Red, pad, @tagName(.AnchorEnd) });
-            self.AnchorEnd.dump(indent + 1);
-            std.debug.print("{s})\n", .{ pad });
-        },
         .TrailingContext => {
             std.debug.print("{s}{s}{s}{s}(\n", .{ Yellow, pad, @tagName(self.*), Reset });
             std.debug.print("{s}ToConsume: {s}", .{ White, Reset });
@@ -89,11 +84,5 @@ pub fn dump(self: *const RegexNode, indent: usize) void {
             self.TrailingContext.right.dump(indent + 1);
             std.debug.print("{s})\n", .{ pad });
         },
-        .StartCondition => {
-            std.debug.print("{s}{s}{s}({s}\n", .{ Red, pad, @tagName(self.*), self.StartCondition.name });
-            self.StartCondition.left.dump(indent + 1);
-            std.debug.print("{s})\n", .{ pad });
-        }
-        // else => @panic("Unhandled RegexNode format !"),
     }
 }

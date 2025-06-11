@@ -17,7 +17,6 @@ pub const Token = union(enum) {
     RBracket,
     LBrace,
     RBrace,
-    StartConditionOpen,
     Quote,
     Eof,
 

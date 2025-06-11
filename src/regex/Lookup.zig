@@ -39,7 +39,6 @@ pub fn fillLookupTables(self: *Parser) void {
         nuds[@intFromEnum(Token.AnchorStart)] = &Makers.makeAnchorStart;
         nuds[@intFromEnum(Token.LParen)] = &Makers.makeGroup;
         nuds[@intFromEnum(Token.Escape)] = &Makers.makeEscape;
-        nuds[@intFromEnum(Token.StartConditionOpen)] = &Makers.makeStartCondition;
         nuds[@intFromEnum(Token.Quote)] = &Makers.makeQuote;
 
         //Error generating tokens
@@ -108,7 +107,6 @@ pub fn fillLookupTables(self: *Parser) void {
         bps[@intFromEnum(Token.RParen)] = .None;
         bps[@intFromEnum(Token.RBracket)] = .None;
         bps[@intFromEnum(Token.Eof)] = .None;
-        bps[@intFromEnum(Token.StartConditionOpen)] = .None;
     }
 
     // for (self.bp_lookup.?) |bp| {

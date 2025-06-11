@@ -11,11 +11,11 @@ const DFA                 =  DFAModule.DFA;
 
 const Templates           =  @import("Templates.zig");
 const TemplatesYYMore     =  @import("TemplatesYYMore.zig");
+const G                   =  @import("../../globals.zig");
 
 const MAX_ITEM_PER_ROW: usize = 10;
 
 const actionsHead =
-\\static inline int yy_action(int accept_id) {
 \\    switch (accept_id) {
 \\
 ;
@@ -25,8 +25,6 @@ const actionsTail =
 \\            fprintf(stderr, "Unknown action id: %d\n", accept_id);
 \\            break;
 \\        }
-\\    return 0;
-\\}
 \\
 ;
 
@@ -109,7 +107,10 @@ fn printTables(dfa: DFA, tc_dfas: ArrayListUnmanaged(DFA.DFA_SC), lexParser: Lex
     _ = try writer.write("#include <stdint.h>\n");
     _ = try writer.write("#include <stdio.h>\n");
     _ = try writer.write("#include <string.h>\n\n\n");
-    try printYyAcclist(dfa, tc_dfas, lexParser, writer);
+
+    if (G.options.needTcBacktracking)
+        try printYyAcclist(dfa, tc_dfas, lexParser, writer);
+
     try printTable(i32, writer, dfa.yy_accept.?, "accept", "32", "");
     try printTable(u8, writer, @constCast((ec.yy_ec)[0..]), "ec", "8", "u");
     try printTable(i16, writer, dfa.cTransTable.?.base, "base", "16", "");
@@ -118,9 +119,9 @@ fn printTables(dfa: DFA, tc_dfas: ArrayListUnmanaged(DFA.DFA_SC), lexParser: Lex
     try printTable(i16, writer, dfa.cTransTable.?.check, "check", "16", "");
 }
 
-fn printUserCode(lexParser: LexParser, opts: LexOptions, writer: anytype) !void {
+fn printUserCode(lexParser: LexParser, writer: anytype) !void {
     for (lexParser.definitions.cCodeFragments.items) |codeFragment| {
-        try writer.print("#line {d} \"{s}\"\n", .{codeFragment.lineNo, opts.inputName});
+        try writer.print("#line {d} \"{s}\"\n", .{codeFragment.lineNo, G.options.inputName});
         _ = try writer.write(codeFragment.code);
         _ = try writer.write("\n\n");
     }
@@ -128,8 +129,12 @@ fn printUserCode(lexParser: LexParser, opts: LexOptions, writer: anytype) !void 
 
 fn printBody(lexParser: LexParser, writer: anytype) !void {
     _ = try writer.write(TemplatesYYMore.bodyFirstPart);
+    _ = try writer.write(TemplatesYYMore.sectionTwo);
+    if (G.options.needTcBacktracking)
+        _ = try writer.write(TemplatesYYMore.tcBacktracking);
+    _ = try writer.write(TemplatesYYMore.sectionThree);
     try printActions(lexParser, writer);
-    _ = try writer.write(TemplatesYYMore.bodySecondPartWithTc);
+    _ = try writer.write(TemplatesYYMore.sectionFour);
 }
 
 
@@ -140,9 +145,8 @@ pub fn print(
     tc_dfas: ArrayListUnmanaged(DFA.DFA_SC),
     dfa: DFA,
     lexParser: LexParser,
-    opts: LexOptions
 ) !void {
-    var file, const close = if (opts.t) 
+    var file, const close = if (G.options.t) 
         .{ std.io.getStdOut(), false } 
     else 
         .{ try std.fs.cwd().createFile("ft_lex.yy.c", .{}), true };
@@ -151,19 +155,21 @@ pub fn print(
     const writer = file.writer();
 
     try printTables(dfa, tc_dfas, lexParser, ec, writer);
-    try printUserCode(lexParser, opts, writer);
+    try printUserCode(lexParser, writer);
     try printSCEnum(lexParser, dfas, bol_dfas, writer);
     try printBody(lexParser, writer);
 
     if (lexParser.userSubroutines) |subroutine| {
-        std.debug.print("Used user subroutine\n", .{});
         _ = try writer.write(subroutine);
+        std.debug.print("Used user subroutine\n", .{});
     } else {
-        std.debug.print("Default main produced\n", .{});
         _ = try writer.write(Templates.defaultMain);
+        std.debug.print("Default main produced\n", .{});
     }
 }
 
+///This function is similar to the previous declaration, however its only used
+///in tests.
 pub fn printTo(
     ec: EC,
     dfas: ArrayListUnmanaged(DFA.DFA_SC),
@@ -171,11 +177,10 @@ pub fn printTo(
     tc_dfas: ArrayListUnmanaged(DFA.DFA_SC),
     dfa: DFA,
     lexParser: LexParser,
-    opts: LexOptions,
     writer: anytype,
 ) !void {
     try printTables(dfa, tc_dfas, lexParser, ec, writer);
-    try printUserCode(lexParser, opts, writer);
+    try printUserCode(lexParser, writer);
     try printSCEnum(lexParser, dfas, bol_dfas, writer);
     try printBody(lexParser, writer);
 
