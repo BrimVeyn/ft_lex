@@ -1,8 +1,11 @@
 const std               = @import("std");
-const DefinitionModule  = @import("Definitions.zig");
-const Definitions       = DefinitionModule.Definitions;
 const print             = std.debug.print;
 const mem               = std.mem;
+
+const G                 = @import("../globals.zig");
+const DefinitionModule  = @import("Definitions.zig");
+const Definitions       = DefinitionModule.Definitions;
+
 const RulesModule       = @import("Rules.zig");
 const Rule              = RulesModule.Rule;
 
@@ -264,6 +267,10 @@ pub const LexTokenizer = struct {
         const sLineNo: usize = self.pos.line;
         while (self.peekC()) |c| {
             if (c == '\n') break;
+
+            if (mem.startsWith(u8, self.input[self.pos.absolute..], "yymore"))
+                G.options.needYYMore = true;
+
             _ = self.getC();
         }
         const eLine: usize = self.pos.absolute;
@@ -433,16 +440,15 @@ pub const LexTokenizer = struct {
 
         var depth: usize = 1;
         var sQuote: bool, var dQuote = .{ false, false };
-        var multiLineComment: bool = false;
-        var oneLineComment: bool = false;
+        var multiLineComment, var oneLineComment = .{ false, false };
         while (depth != 0) {
             const nextCs = [_]u8 {
                 self.peekN(1) orelse return error.UnexpectedEOF,
                 self.peekN(2) orelse return error.UnexpectedEOF
             };
 
-            if (!dQuote and mem.eql(u8, &nextCs, "//")) oneLineComment = true;
-            if (!dQuote and mem.eql(u8, &nextCs, "/*")) multiLineComment = true;
+            if (!dQuote and !sQuote and mem.eql(u8, &nextCs, "//")) oneLineComment = true;
+            if (!dQuote and !sQuote and mem.eql(u8, &nextCs, "/*")) multiLineComment = true;
 
             if (oneLineComment and nextCs[0] != '\\' and nextCs[1] == '\n') 
             { _ = self.getN(2); oneLineComment = false; continue; }
@@ -452,6 +458,10 @@ pub const LexTokenizer = struct {
 
             if (oneLineComment or multiLineComment) 
             { _ = self.getC(); continue; }
+
+            //NOTE: Not the best way to match yymore, tho if the user declares a variable x_yymore its his fault
+            if (mem.startsWith(u8, self.input[self.pos.absolute..], "yymore"))
+                G.options.needYYMore = true;
 
             switch (nextCs[0]) {
                 '\\' => _ = self.getC(),
@@ -468,10 +478,11 @@ pub const LexTokenizer = struct {
         const eBlock: usize = self.pos.absolute;
         _ = self.eatTillNewLine();
         self.eatWhitespacesAndNewline();
+        std.debug.print("Parsed: {s}\n", .{self.input[sBlock..eBlock]});
 
-        return LexToken{
+        return LexToken {
             .cCode = .{
-                .code = self.input[sBlock..eBlock],
+                .code = self.input[sBlock + 1..eBlock - 1],
                 .lineNo = sLine,
             },
         };

@@ -1,3 +1,18 @@
+
+	int func(void);
+
 %%
 
-((ab|cd)){1,3}/def printf("salut !\n");
+abc func();
+
+def {
+	printf("salut !\n");
+}
+
+
+%%
+
+int func(void) {
+	yymore();
+	return 1;
+}

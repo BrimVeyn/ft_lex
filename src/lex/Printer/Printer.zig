@@ -1,5 +1,7 @@
 const std                 =  @import("std");
+const mem                 =  std.mem;
 const ArrayListUnmanaged  =  std.ArrayListUnmanaged;
+
 const rootModule          =  @import("../../main.zig");
 const DFAModule           =  @import("../../regex/DFA.zig");
 const EC                  =  @import("../../regex/EquivalenceClasses.zig");
@@ -39,17 +41,46 @@ const ruleTail =
 \\
 ;
 
+const tcLeft =
+\\
+\\        yy_buffer[yy_buf_pos] = yy_hold_char;
+\\        yy_buf_pos = start_pos + {d};
+\\        yyleng = {0d};
+\\        YY_DO_BEFORE_ACTION
+\\
+;
+
+const tcRight =
+\\
+\\        yy_buffer[yy_buf_pos] = yy_hold_char;
+\\        yy_buf_pos -= {d};
+\\        yyleng -= {0d};
+\\        YY_DO_BEFORE_ACTION
+\\
+;
+
 fn printActions(lParser: LexParser, writer: anytype) !void {
     _ = try writer.write(actionsHead);
     for (lParser.rules.items, 0..) |rule, i| {
         _ = try writer.print(ruleHead, .{i + 1});
+        _ = try writer.write("{");
+
+        //NOTE: Instead of generating the backtracking loop, we produce
+        //these small code pieces to backtrack instantaneously
+        if (rule.trailingContext.value) |leng| {
+            switch (rule.trailingContext.side) {
+                .Left => try writer.print(tcLeft, .{leng}),
+                .Right => try writer.print(tcRight, .{leng}),
+            }
+        }
+
         _ = try writer.write(rule.code.code);
 
-        //Do not insert break statement as its a fallthrough rule
-        if (std.mem.eql(u8, "|", rule.code.code))
-            continue;
+        //Do not insert break statement if the action is fallthrough
+        if (!mem.eql(u8, "|", rule.code.code))
+            _ = try writer.write(ruleTail);
 
-        _ = try writer.write(ruleTail);
+        _ = try writer.write("\n}");
     }
     _ = try writer.write(actionsTail);
 }
@@ -129,12 +160,29 @@ fn printUserCode(lexParser: LexParser, writer: anytype) !void {
 
 fn printBody(lexParser: LexParser, writer: anytype) !void {
     _ = try writer.write(TemplatesYYMore.bodyFirstPart);
+
+    if (!G.options.needYYMore)
+        _ = try writer.write(TemplatesYYMore.noYYmoreFallback);
+
     _ = try writer.write(TemplatesYYMore.sectionTwo);
+
+    if (G.options.needYYMore)
+        _ = try writer.write(TemplatesYYMore.yyMoreSectionOne);
+
+    _ = try writer.write(TemplatesYYMore.sectionThree);
+
     if (G.options.needTcBacktracking)
         _ = try writer.write(TemplatesYYMore.tcBacktracking);
-    _ = try writer.write(TemplatesYYMore.sectionThree);
+
+    if (G.options.needYYMore) {
+        _ = try writer.write(TemplatesYYMore.yyMoreSectionTwo);
+    } else {
+        _ = try writer.write(TemplatesYYMore.sectionFour);
+    }
+
     try printActions(lexParser, writer);
-    _ = try writer.write(TemplatesYYMore.sectionFour);
+
+    _ = try writer.write(TemplatesYYMore.sectionFive);
 }
 
 

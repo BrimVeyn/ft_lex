@@ -53,7 +53,6 @@ fn assertCompressionIsValid(path: []const u8) !void {
     defer nfaList.deinit();
 
     for (headList.items) |head| {
-        nfaBuilder.reset();
         const nfa = nfaBuilder.astToNfa(head) catch |e| {
             std.log.err("NFA: {!}", .{e});
             continue;

@@ -362,17 +362,18 @@ pub const NFABuilder = struct {
 
         for (NFAs, lexParser.rules.items, 0..) |inner, *rule, it| {
             if (inner.lookAhead) |lookAhead| {
-                //TODO: Determine if the trailing context and its rule are of arbitrary length.
-                //If not we can omit the backtracking part of the matcher and add a precomputed backtracking in
-                //the action associated with the rule.
+                //NOTE: Here we try to compute the length of r1 and r2 (for a regex of form r1/r2)
+                //if we can compute either of the length, we don't need to include the backtracking
+                //mechanism since we can simply compute the effective match length. See Printer.printActions
                 if (inner.length()) |len| {
-                    std.log.info("INNER LEN: {d}", .{len});
+                    std.debug.print("Marking left on rule: {d} with leng: {d}\n", .{it, len});
                     rule.trailingContext = .{ .side = .Left, .value = len, };
+                    continue;
                 } else if (lookAhead.length()) |len| {
-                    std.log.info("LOOKAHEAD LEN: {d}", .{len});
+                    std.debug.print("Marking right on rule: {d} with leng: {d}\n", .{it, len});
                     rule.trailingContext = .{ .side = .Right, .value = len };
+                    continue;
                 } else {
-                    std.log.info("Both are of variable length", .{});
                     G.options.needTcBacktracking = true;
                 }
 

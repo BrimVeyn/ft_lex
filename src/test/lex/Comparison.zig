@@ -59,7 +59,6 @@ fn produceFtLexOutput(alloc: std.mem.Allocator, lFile: []const u8, langFile: []c
     defer nfaList.deinit();
 
     for (headList.items) |head| {
-        nfaBuilder.reset();
         const nfa = nfaBuilder.astToNfa(head) catch |e| {
             std.log.err("NFA: {!}", .{e});
             continue;
@@ -304,6 +303,13 @@ test "Easy yymore()" {
     try compareOutput(
         "src/test/lex/examples/easy_yymore.l",
         "src/test/lex/examples/easy_yymore.lang",
+    );
+}
+
+test "Easy yymore() 2" {
+    try compareOutput(
+        "src/test/lex/examples/easy_yymore_2.l",
+        "src/test/lex/examples/easy_yymore_2.lang",
     );
 }
 

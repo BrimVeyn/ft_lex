@@ -41,7 +41,7 @@ pub const bodyFirstPart = \\
 \\FILE *yyin = NULL; // input stream
 \\FILE *yyout = NULL;
 \\
-\\//yymore specific vairables
+\\//yymore specific variables
 \\int yy_more_len = 0;
 \\int yy_more_flag = 0;
 \\
@@ -122,9 +122,19 @@ pub const bodyFirstPart = \\
 \\#define BEGIN(condition) ((yy_start) = (condition))
 \\#define YY_AT_BOL() (yy_buf_pos == 0 || (yy_buf_pos > 0 && yy_buffer[yy_buf_pos - 1] == '\n'))
 \\#define YY_BOL() ((yy_start >> 16))
+\\#define YY_DO_BEFORE_ACTION do { \
+\\    yy_hold_char = yytext[yyleng]; \
+\\    yytext[yyleng] = '\0'; \
+\\    yy_hold_char_restored = 0; \
+\\} while(0); \
 \\
 \\
 ;
+
+pub const noYYmoreFallback =
+\\#define yymore() yymore_used_but_not_detected
+;
+
 
 pub const sectionTwo = \\
 \\static inline int yy_next_state(int s, int ec) {
@@ -159,8 +169,13 @@ pub const sectionTwo = \\
 \\        int start_pos = yy_buf_pos;
 \\        int cur_pos = start_pos;
 \\        int last_read_c = -1;
-\\        // printf("state: %d, bol_state: %d\n", state, bol_state);
+\\
+;
+pub const yyMoreSectionOne =
 \\        yy_more_flag = 0;
+;
+
+pub const sectionThree =
 \\
 \\        while (1) {
 \\            last_read_c = yy_read_char();
@@ -216,7 +231,8 @@ pub const sectionTwo = \\
 \\
 ;
 
-pub const tcBacktracking = \\
+pub const tcBacktracking = 
+\\
 \\            if (yy_acclist[accept_id] != 0) {
 \\                yy_buf_pos = start_pos;
 \\
@@ -252,28 +268,37 @@ pub const tcBacktracking = \\
 \\            }
 ;
 
-pub const sectionThree = \\
+//Actions
+
+
+pub const yyMoreSectionTwo =
 \\
 \\            if (yy_more_len != 0) {
 \\                /*printf("Start pos: %d, yyleng: %d\n", start_pos, yyleng);*/
 \\                yytext = &yy_buffer[start_pos - yyleng];
 \\                yyleng += (default_lap - start_pos);
-\\            
 \\            } else {
 \\                yytext = &yy_buffer[start_pos];
 \\                yyleng = default_lap - start_pos;
 \\                yy_more_len = 0;
 \\            }
 \\
-\\            //Save the last read character, in case yytext is used as a string in any action
-\\            yy_hold_char = yytext[yyleng];
-\\            yytext[yyleng] = '\0'; 
-\\            yy_hold_char_restored = 0;
+\\            YY_DO_BEFORE_ACTION
 \\
 \\
 ;
 
-pub const sectionFour = \\
+pub const sectionFour = 
+\\
+\\            yytext = &yy_buffer[start_pos];
+\\            yyleng = default_lap - start_pos;
+\\            YY_DO_BEFORE_ACTION
+\\
+\\
+;
+
+pub const sectionFive = 
+\\
 \\            if (!yy_more_flag) yy_more_len = 0;
 \\
 \\            if (!yy_hold_char_restored) {
@@ -283,9 +308,13 @@ pub const sectionFour = \\
 \\            continue;
 \\        }
 \\
-\\        //DO BEFORE ACTION
-\\        yytext = &yy_buffer[start_pos];
-\\        yyleng = (int) (yy_buf_pos - start_pos);
+\\        if (yy_more_len) {
+\\            yyleng += (int) (yy_buf_pos - start_pos);
+\\        } else {
+\\            yyleng = (int) (yy_buf_pos - start_pos);
+\\        }
+\\        yytext = &yy_buffer[start_pos - yy_more_len];
+\\        yy_more_len = 0;
 \\
 \\        //ECHO
 \\        fwrite(yytext, yyleng, 1, yyout);
