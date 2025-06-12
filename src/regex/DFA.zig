@@ -362,22 +362,6 @@ pub const DFA = struct {
         }
 
         for (bolDFAs.items) |dfa_sc| {
-            const dfaRow = blk: {
-                for (DFAs.items) |nDFa_sc|
-                if (nDFa_sc.sc == dfa_sc.sc) break :blk minDfa.data.items[nDFa_sc.dfa.offset];
-                unreachable;
-            };
-            var bolRow = &dfa_sc.dfa.minimized.?.data.items[0];
-
-            outer: for (dfaRow.signature.?.data.items) |transition| {
-                for (bolRow.signature.?.data.items) |bolTrans| {
-                    if (Symbol.eql(transition.symbol, bolTrans.symbol))
-                        continue: outer;
-                }
-                try bolRow.signature.?.append(transition);
-            }
-            bolRow.signature.?.sort();
-
             try acceptList.appendSlice(dfa_sc.dfa.accept_list);
             try minDfa.appendSlice(dfa_sc.dfa.minimized.?.data.items);
         }

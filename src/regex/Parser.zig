@@ -8,7 +8,9 @@ const TokenizerModule   = @import("Tokenizer.zig");
 const Tokenizer         = TokenizerModule.Tokenizer;
 const Token             = TokenizerModule.Token;
 const Makers            = @import("ParserMakers.zig");
-pub const makeNode      = Makers.makeNode;
+const makeNode      = Makers.makeNode;
+const G         = @import("../globals.zig");
+
 
 pub const Parser = @This();
 
@@ -202,5 +204,17 @@ pub fn parseExpr(self: *Parser, min_bp: BindingPower) ParserError!*RegexNode {
 }
 
 pub inline fn parse(self: *Parser) !*RegexNode {
-    return self.parseExpr(.None);
+    const ret = self.parseExpr(.None);
+
+    G.PackedCharClass = self.classSet.count();
+
+    if (G.ParseTreeNodes >= G.options.maxParseTreeNodes) {
+        std.log.err("Max parse tree nodes exceeded: {d}", .{G.options.maxParseTreeNodes});
+        return error.MaxParseTreeNodesExceeded;
+    } else if (G.PackedCharClass >= G.options.maxPackedCharClass) {
+        std.log.err("Max packed character class exceeded: {d}", .{G.options.maxParseTreeNodes});
+        return error.MaxParseTreeNodesExceeded;
+    }
+
+    return ret;
 }

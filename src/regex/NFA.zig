@@ -13,7 +13,6 @@ const RegexNode           = ParserModule.RegexNode;
 
 pub const StateId         = usize;
 pub const NFA_LIMIT       = 32_000;
-pub const RECURSION_LIMIT = 10_000;
 
 pub const Symbol = union(enum) {
     char: u8,
@@ -66,7 +65,6 @@ pub const State = struct {
 };
 
 pub const NFAError = error {
-    NFAUnhandled,
     NFATooComplicated,
 } || error { OutOfMemory };
 
@@ -157,7 +155,7 @@ pub const NFABuilder = struct {
     pub fn astToNfaRec(self: *NFABuilder, node: *RegexNode) NFAError!NFA {
         self.depth += 1;
 
-        if (self.next_id > NFA_LIMIT or self.depth > RECURSION_LIMIT)
+        if (self.next_id > G.options.maxStates)
             return error.NFATooComplicated;
 
         return switch (node.*) {

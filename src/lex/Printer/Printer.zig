@@ -159,17 +159,17 @@ fn printUserCode(lexParser: LexParser, writer: anytype) !void {
 }
 
 fn printBody(lexParser: LexParser, writer: anytype) !void {
-    _ = try writer.write(TemplatesYYMore.bodyFirstPart);
+    _ = try writer.write(Templates.sectionOne);
 
     if (!G.options.needYYMore)
         _ = try writer.write(TemplatesYYMore.noYYmoreFallback);
 
-    _ = try writer.write(TemplatesYYMore.sectionTwo);
+    _ = try writer.write(Templates.sectionTwo);
 
     if (G.options.needYYMore)
         _ = try writer.write(TemplatesYYMore.yyMoreSectionOne);
 
-    _ = try writer.write(TemplatesYYMore.sectionThree);
+    _ = try writer.write(Templates.sectionThree);
 
     if (G.options.needTcBacktracking)
         _ = try writer.write(TemplatesYYMore.tcBacktracking);
@@ -177,12 +177,12 @@ fn printBody(lexParser: LexParser, writer: anytype) !void {
     if (G.options.needYYMore) {
         _ = try writer.write(TemplatesYYMore.yyMoreSectionTwo);
     } else {
-        _ = try writer.write(TemplatesYYMore.sectionFour);
+        _ = try writer.write(Templates.sectionFour);
     }
 
     try printActions(lexParser, writer);
 
-    _ = try writer.write(TemplatesYYMore.sectionFive);
+    _ = try writer.write(Templates.sectionFive);
 }
 
 
@@ -209,10 +209,6 @@ pub fn print(
 
     if (lexParser.userSubroutines) |subroutine| {
         _ = try writer.write(subroutine);
-        std.debug.print("Used user subroutine\n", .{});
-    } else {
-        _ = try writer.write(Templates.defaultMain);
-        std.debug.print("Default main produced\n", .{});
     }
 }
 
@@ -235,8 +231,5 @@ pub fn printTo(
     if (lexParser.userSubroutines) |subroutine| {
         std.debug.print("Used user subroutine\n", .{});
         _ = try writer.write(subroutine);
-    } else {
-        std.debug.print("Default main produced\n", .{});
-        _ = try writer.write(Templates.defaultMain);
     }
 }

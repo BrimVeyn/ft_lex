@@ -126,8 +126,11 @@ pub fn main() !u8 {
 
         for (headList.items) |head| {
             const nfa = nfaBuilder.astToNfa(head) catch |e| {
-                std.log.err("NFA: {!}", .{e});
-                continue;
+                switch (e) {
+                    error.NFATooComplicated => std.log.err("Maximum NFA states exceeded (>= {d})", .{ G.options.maxSizeDFA }),
+                    else => {},
+                }
+                return 1;
             };
             try nfaList.append(nfa);
         }
@@ -168,8 +171,23 @@ pub fn main() !u8 {
         // DFADump.transTableDump(finalDfa.transTable.?);
 
         std.log.info("Compressed eql: {}", .{ try finalDfa.compareTTToCTT() });
-        std.log.info("Uncompressed size: {d}", .{finalDfa.transTable.?.items.len * ec.maxEc});
-        std.log.info("Compressed size: {d}", .{(finalDfa.cTransTable.?.base.len * 2) + (finalDfa.cTransTable.?.next.len * 2)});
+
+        if (G.options.compressed) {
+            const compressedSize = (finalDfa.cTransTable.?.base.len * 2) + (finalDfa.cTransTable.?.next.len * 2);
+            if (compressedSize >= G.options.maxSizeDFA) {
+                std.log.err("Maximum output size exceeded: max: {d}, actual: {d}", .{G.options.maxSizeDFA, compressedSize});
+                return 1;
+            }
+            std.log.info("Compressed size: {d}", .{compressedSize});
+        } else {
+            const uncompressedSize = finalDfa.transTable.?.items.len * ec.maxEc;
+            if (uncompressedSize >= G.options.maxSizeDFA) {
+                std.log.err("Maximum output size exceeded: max: {d}, actual: {d}", .{G.options.maxSizeDFA, uncompressedSize});
+                return 1;
+            }
+            std.log.info("Uncompressed size: {d}", .{uncompressedSize});
+        }
+
         try Printer.print(
             ec, DFAs,
             bol_DFAs, tc_DFAs, finalDfa,

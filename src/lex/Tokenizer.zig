@@ -388,31 +388,32 @@ pub const LexTokenizer = struct {
         return true;
     }
 
-    fn getParam(self: *LexTokenizer) LexTokenizerError!LexToken {
+    fn getParam(self: *LexTokenizer) LexTokenizerError!void {
         _ = self.getC();
         const id = self.getC().?;
         switch (id) {
-            'a' => if (self.matchAndEatSlice("rray")) 
-                return LexToken{ .param = .{ .YYTextType = .Array } },
-            'p' => if (self.matchAndEatSlice("ointer")) 
-                return LexToken{ .param = .{ .YYTextType = .Pointer } },
+            'a' => if (self.matchAndEatSlice("rray")) { G.options.yyTextType = .Array; },
+            'p' => if (self.matchAndEatSlice("ointer")) { G.options.yyTextType = .Pointer; },
             else => {},
         }
 
         self.eatWhitespaces();
         const number = try self.getNumber();
+
         _ = self.eatTillNewLine();
         self.eatWhitespacesAndNewline();
 
-        return switch (id) {
-            'p' => .{ .param = .{ .nPositions = number }},
-            'n' => .{ .param = .{ .nStates = number }},
-            'a' => .{ .param = .{ .nTransitions = number }},
-            'e' => .{ .param = .{ .nParseTreeNodes = number }},
-            'k' => .{ .param = .{ .nPackedCharacterClass = number }},
-            'o' => .{ .param = .{ .nOutputArray = number }},
+        std.log.info("Detected param with id: {c} and number: {d}", .{id, number});
+
+        switch (id) {
+            'p' => G.options.maxPositions = number,
+            'n' => G.options.maxStates = number,
+            'a' => G.options.maxTransitions = number,
+            'e' => G.options.maxParseTreeNodes = number,
+            'k' => G.options.maxPackedCharClass = number,
+            'o' => G.options.maxSizeDFA = number,
             else => unreachable,
-        };
+        }
     }
 
     pub fn nextDefinitions(self: *LexTokenizer) LexTokenizerError!LexToken {
@@ -426,7 +427,7 @@ pub const LexTokenizer = struct {
                     '%' => { _ = self.getN(2); return .EndOfSection; },
                     '{' => self.getCBlockDef() catch |e| return self.logError(e),
                     's', 'S', 'x', 'X', => self.getStartCondition() catch |e| self.logError(e),
-                    'p', 'n', 'a', 'e', 'k', 'o' => self.getParam() catch |e| self.logError(e),
+                    'p', 'n', 'a', 'e', 'k', 'o' => { self.getParam() catch |e| return self.logError(e); return self.nextDefinitions(); },
                     else => self.logError(error.UnrecognizedPercentDirective),
                 } else self.logError(error.UnexpectedEOF),
             else => self.getDefinition() catch |e| self.logError(e),
@@ -478,7 +479,6 @@ pub const LexTokenizer = struct {
         const eBlock: usize = self.pos.absolute;
         _ = self.eatTillNewLine();
         self.eatWhitespacesAndNewline();
-        std.debug.print("Parsed: {s}\n", .{self.input[sBlock..eBlock]});
 
         return LexToken {
             .cCode = .{

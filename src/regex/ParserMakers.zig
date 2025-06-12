@@ -11,9 +11,12 @@ const PosixClass        = TokenizerModule.PosixClass;
 const INFINITY          = Parser.INFINITY;
 
 const Ascii             = @import("Ascii.zig");
+const G                 = @import("../globals.zig");
 
 pub fn makeNode(self: *Parser, node: RegexNode) !*RegexNode {
+    G.incrementParseTreeNodes();
     const ret = try self.pool.create();
+
     if (std.meta.activeTag(node) == .CharClass)
         try self.classSet.put(node.CharClass.range, {});
 

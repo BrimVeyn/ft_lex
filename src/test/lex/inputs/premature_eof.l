@@ -3,9 +3,9 @@
 
 %%
 
-abc func();
+abc{10000,20000}{20000} func();
 
-def {
+abc/def {
 	printf("salut !\n");
 }
 
@@ -13,6 +13,5 @@ def {
 %%
 
 int func(void) {
-	yymore();
 	return 1;
 }
