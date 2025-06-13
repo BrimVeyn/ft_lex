@@ -460,9 +460,13 @@ pub const LexTokenizer = struct {
             if (oneLineComment or multiLineComment) 
             { _ = self.getC(); continue; }
 
-            //NOTE: Not the best way to match yymore, tho if the user declares a variable x_yymore its his fault
-            if (mem.startsWith(u8, self.input[self.pos.absolute..], "yymore"))
+            //NOTE: Not the best way to match yymore/REJECT, tho if the user declares a 
+            //variable x_yymore, we consider that it's his fault.
+            if (mem.startsWith(u8, self.input[self.pos.absolute..], "yymore")) {
                 G.options.needYYMore = true;
+            } else if (mem.startsWith(u8, self.input[self.pos.absolute..], "REJECT")) {
+                G.options.needREJECT = true;
+            }
 
             switch (nextCs[0]) {
                 '\\' => _ = self.getC(),

@@ -2,6 +2,7 @@ const Templates = @This();
 
 pub const noYYmoreFallback =
 \\#define yymore() yymore_used_but_not_detected
+\\
 ;
 
 pub const yyMoreSectionOne =
@@ -65,3 +66,37 @@ pub const yyMoreSectionTwo =
 \\
 ;
 
+pub const yyMoreBodySectionFive = 
+\\
+\\            if (!yy_more_flag) yy_more_len = 0;
+\\
+\\            if (!yy_hold_char_restored) {
+\\                yy_buffer[yy_buf_pos] = yy_hold_char;
+\\            }
+\\            continue;
+\\        }
+\\
+;
+
+pub const yyMoreBodySectionSix =
+\\        if (yy_more_len) {
+\\            yyleng += (int) (yy_buf_pos - start_pos);
+\\        } else {
+\\            yyleng = (int) (yy_buf_pos - start_pos);
+\\        }
+\\        yytext = &yy_buffer[start_pos - yy_more_len];
+\\        yy_more_len = 0;
+\\
+\\        //ECHO
+\\        fwrite(yytext, yyleng, 1, yyout);
+\\        if (yy_buffer[yy_buf_pos] == EOF) break;
+\\    }
+\\
+\\    yy_free_buffer();
+\\    fclose(yyin);
+\\    yywrap();
+\\
+\\    return 0;
+\\}
+\\
+;

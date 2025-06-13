@@ -16,6 +16,7 @@ const Partition             = DFAMinimizer.Partition;
 
 const EC                    = @import("EquivalenceClasses.zig");
 const LexParser             = @import("../lex/Parser.zig");
+const G                     = @import("../globals.zig");
 
 const DFATransition = struct {
     symbol: Symbol,
@@ -46,14 +47,16 @@ const StateSetCtx = struct {
 };
 
 const StateSetData = struct {
-    transitions: std.ArrayList(DFATransition),
-    accept_id: ?usize = null,
+    transitions: ArrayList(DFATransition),
+    accept_id  : ?usize = null,
+    accept_list: ?[]usize,
 
     pub fn init(alloc: std.mem.Allocator) StateSetData {
-        return .{ .transitions = std.ArrayList(DFATransition).init(alloc), };
+        return .{ .transitions = ArrayList(DFATransition).init(alloc), };
     }
 
-    pub fn deinit(self: *StateSetData) void {
+    pub fn deinit(self: *StateSetData, alloc: std.mem.Allocator) void {
+        if (self.accept_list) |al| alloc.free(al);
         self.transitions.deinit();
     }
 };
@@ -143,7 +146,7 @@ pub const DFA = struct {
         var dfa_it = self.data.iterator();
         while (dfa_it.next()) |entry| {
             entry.key_ptr.*.deinit();
-            entry.value_ptr.*.deinit();
+            entry.value_ptr.*.deinit(self.alloc);
         }
         if (self.cTransTable) |ctt| {
             self.alloc.free(ctt.next);
@@ -178,23 +181,33 @@ pub const DFA = struct {
     pub const minimizedStringify = DFADump.minimizedStringify;
     pub const minimize           = DFAMinimizer.minimize;
 
-    fn getAcceptingRule(self: *DFA, set: StateSet) ?usize {
+    fn getAcceptingRule(self: *DFA, set: StateSet) !struct { ?usize, ?[]usize } {
         var best: ?usize = null; 
+        var all = if (G.options.needREJECT) ArrayList(usize).init(self.alloc) else null;
 
         for (set.keys()) |s| {
             for (self.accept_list) |aState| {
-                if (s.id == aState.state.id and (best == null or (aState.priority + 1) < best.?)) {
-                    best = (aState.priority + 1);
+                if (s.id == aState.state.id) {
+                    if (G.options.needREJECT)
+                        try all.?.append(aState.priority + 1);
+
+                    if (best == null or (aState.priority + 1) < best.?)
+                        best = (aState.priority + 1);
                 }
             }
         }
-        return best;
+        if (all) |a| std.mem.sort(usize, a.items[0..], {}, std.sort.asc(usize));
+
+        return .{ 
+            best,
+            if (all) |*a| try a.toOwnedSlice() else null 
+        };
     }
 
     inline fn epsilon_closure(self: *DFA, states: StateSet) !StateSet {
         var closure = try states.clone();
 
-        var stack = std.ArrayList(*State).init(self.alloc);
+        var stack = ArrayList(*State).init(self.alloc);
         defer stack.deinit();
 
         for (states.keys()) |s| try stack.append(s);
@@ -243,13 +256,15 @@ pub const DFA = struct {
 
         const start_closure = try self.epsilon_closure(start_set);
 
-        var queue = std.ArrayList(StateSet).init(self.alloc);
+        var queue = ArrayList(StateSet).init(self.alloc);
         defer queue.deinit();
 
         try queue.append(start_closure);
+        const accept_id, const accept_list = try self.getAcceptingRule(start_closure);
         try self.data.put(start_closure, .{
-            .transitions = std.ArrayList(DFATransition).init(self.alloc),
-            .accept_id = self.getAcceptingRule(start_closure),
+            .transitions = ArrayList(DFATransition).init(self.alloc),
+            .accept_id = accept_id,
+            .accept_list = accept_list,
         });
         // self.epsilon_cache = std.AutoHashMap(StateSet, StateSet).init(self.alloc);
         // defer self.epsilon_cache.deinit();
@@ -269,9 +284,11 @@ pub const DFA = struct {
                 // try self.epsilon_cache.put(gotos, closure);
 
                 if (!self.data.contains(closure)) {
+                    const inner_accept_id, const inner_accept_list = try self.getAcceptingRule(closure);
                     try self.data.put(closure, .{
-                        .transitions = std.ArrayList(DFATransition).init(self.alloc),
-                        .accept_id = self.getAcceptingRule(closure), 
+                        .transitions = ArrayList(DFATransition).init(self.alloc),
+                        .accept_id = inner_accept_id,
+                        .accept_list = inner_accept_list,
                     });
                     try queue.append(closure);
 
@@ -351,7 +368,7 @@ pub const DFA = struct {
             .yy_ec_highest = DFAs.items[0].dfa.yy_ec_highest,
         };
 
-        var acceptList = std.ArrayList(AcceptState).init(merged.alloc);
+        var acceptList = ArrayList(AcceptState).init(merged.alloc);
         defer acceptList.deinit();
 
         var minDfa = Partition.init(merged.alloc);
@@ -553,8 +570,8 @@ pub const DFA = struct {
         for (transTable.items[0..], 0..) |row, i| {
             var offset: usize = 0;
 
-            const allNotNull: std.ArrayList(usize) = blk: {
-                var ret = std.ArrayList(usize).init(self.alloc);
+            const allNotNull: ArrayList(usize) = blk: {
+                var ret = ArrayList(usize).init(self.alloc);
                 for (row.items, 0..) |t, j| { if (t != -1) try ret.append(j); }
                 break: blk ret;
             };

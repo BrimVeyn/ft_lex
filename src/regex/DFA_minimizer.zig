@@ -1,4 +1,6 @@
 const std           = @import("std");
+const ArrayList     = std.ArrayList;
+
 const DFAModule     = @import("DFA.zig");
 const DFA           = DFAModule.DFA;
 const StateSet      = DFAModule.StateSet;
@@ -18,7 +20,7 @@ pub var offset: usize = 0;
 
 pub const Signature = struct {
     pub const SignatureTransition = struct {
-        symbol: Symbol,
+        symbol  : Symbol,
         group_id: usize,
 
         pub fn lessThanFn(_: void, a: SignatureTransition, b: SignatureTransition) bool {
@@ -26,8 +28,9 @@ pub const Signature = struct {
         }
     };
 
-    data: std.ArrayList(SignatureTransition),
-    accept_id: ?usize,
+    data       : ArrayList(SignatureTransition),
+    accept_id  : ?usize,
+    accept_list: ?[]usize,
 
     pub fn dump(self: Signature) void {
         std.debug.print("SIG:\n", .{});
@@ -36,10 +39,11 @@ pub const Signature = struct {
         }
     }
 
-    pub fn init(alloc: std.mem.Allocator, accept_id: ?usize) Signature {
+    pub fn init(alloc: std.mem.Allocator, accept_id: ?usize, accept_list: ?[]usize) Signature {
         return .{ 
-            .data = std.ArrayList(SignatureTransition).init(alloc),
+            .data = ArrayList(SignatureTransition).init(alloc),
             .accept_id = accept_id,
+            .accept_list = accept_list,
         };
     }
 
@@ -85,15 +89,16 @@ pub const Partition = struct {
     const StateSetSet   = std.AutoArrayHashMap(*StateSet, void);
 
     pub const PartitionData = struct {
-        set: StateSetSet,
-        signature: ?Signature,
-        accept_id: ?usize,
+        set        : StateSetSet,
+        signature  : ?Signature = null,
+        accept_id  : ?usize = null,
+        accept_list: ?[]usize = null,
     };
 
-    data: std.ArrayList(PartitionData),
+    data: ArrayList(PartitionData),
 
     pub fn init(alloc: std.mem.Allocator) Partition {
-        return .{ .data = std.ArrayList(PartitionData).init(alloc) };
+        return .{ .data = ArrayList(PartitionData).init(alloc) };
     }
 
     pub fn append(self: *Partition, item: PartitionData) !void {
@@ -177,35 +182,31 @@ pub fn minimize(self: *DFA) !void {
             } else {
                 var newSet = Partition.StateSetSet.init(self.alloc);
                 try newSet.put(entry.key_ptr, {});
-                try P.append(.{ .set = newSet, .signature = null, .accept_id = accept_id });
+                try P.append(.{
+                    .set = newSet,
+                    .signature = null,
+                    .accept_id = accept_id,
+                    .accept_list = entry.value_ptr.accept_list
+                });
             }
         } else {
             try NonASet.put(entry.key_ptr, {});
         }
     }
     if (NonASet.count() == 0) { NonASet.deinit(); } 
-    else { try P.append(.{ .set = NonASet, .signature = null, .accept_id = null }); }
+    else { try P.append(.{ .set = NonASet }); }
 
-    // std.debug.print("PARTITION: \n", .{});
-    // try P.dump(self.data);
 
-    var some: usize = 0;
-    while (some < 10000) :(some += 1) {
+    while (true) {
         var P_new = Partition.init(self.alloc);
-        defer {
-            P.deinit();
-            P = P_new;
-        }
-        for (P.data.items, 0..) |Pdata, gI| {
-            _ = gI;
+        defer { P.deinit(); P = P_new; }
+
+        for (P.data.items) |Pdata| {
             const G = Pdata.set;
 
             for (G.keys()) |set| {
-                const SdataId = self.data.getIndex(set.*).?;
-                _ = SdataId;
-
                 const Sdata = self.data.get(set.*).?;
-                var signature = Signature.init(self.alloc, Pdata.accept_id);
+                var signature = Signature.init(self.alloc, Pdata.accept_id, Pdata.accept_list);
 
                 for (Sdata.transitions.items) |transition| {
                     const transition_to_ptr = self.data.getKeyPtr(transition.to).?;
@@ -214,15 +215,19 @@ pub fn minimize(self: *DFA) !void {
                 }
                 signature.sort();
 
-                const g_id = getGroupIdFromSignature(P_new, signature);
-                if (g_id == null) {
-                    var Nset = Partition.StateSetSet.init(self.alloc);
-                    try Nset.put(set, {});
-                    try P_new.append(.{ .set = Nset, .signature = signature, .accept_id = Pdata.accept_id });
-                } else {
-                    try P_new.data.items[g_id.?].set.put(set, {});
+                if (getGroupIdFromSignature(P_new, signature)) |g_id| {
+                    try P_new.data.items[g_id].set.put(set, {});
                     //We can free this signature, since we already know it
                     signature.deinit();
+                } else {
+                    var Nset = Partition.StateSetSet.init(self.alloc);
+                    try Nset.put(set, {});
+                    try P_new.append(.{
+                        .set = Nset,
+                        .signature = signature,
+                        .accept_id = Pdata.accept_id,
+                        .accept_list = Pdata.accept_list,
+                    });
                 }
             }
         }

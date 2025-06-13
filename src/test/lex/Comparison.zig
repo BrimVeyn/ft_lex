@@ -14,6 +14,7 @@ const ParserModule      = @import("../../regex/Parser.zig");
 const RegexParser       = ParserModule.Parser;
 const RegexNode         = ParserModule.RegexNode;
 const Printer           = @import("../../lex/Printer/Printer.zig");
+const G                 = @import("../../globals.zig");
 
 var   yy_ec: [256]u8     = .{0} ** 256;
 const outputDir          = "src/test/lex/outputs/";
@@ -26,6 +27,7 @@ const libPath            = "src/libl/libl.a";
 fn produceFtLexOutput(alloc: std.mem.Allocator, lFile: []const u8, langFile: []const u8) !void {
     //NOTE: Reset this global otherwise we can't run more than one test sequentially
     DFAMinimizer.offset = 0;
+    G.resetGlobals();
 
 
     var lexParser = try LexParser.init(alloc, @constCast(lFile));
@@ -324,5 +326,12 @@ test "Easy yyless()" {
     try compareOutput(
         "src/test/lex/examples/easy_yyless.l",
         "src/test/lex/examples/easy_yyless.lang"
+    );
+}
+
+test "Easy REJECT" {
+    try compareOutput(
+        "src/test/lex/examples/easy_REJECT.l",
+        "src/test/lex/examples/easy_REJECT.lang"
     );
 }

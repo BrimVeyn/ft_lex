@@ -45,6 +45,8 @@ pub const sectionOne = \\
 \\int yy_more_len = 0;
 \\int yy_more_flag = 0;
 \\
+\\//REJECT specific
+\\int yy_rejected = 0;
 \\
 \\void buffer_realloc(size_t min_required) {
 \\    size_t new_size = yy_buf_size == 0 ? YY_READ_SIZE : yy_buf_size;
@@ -233,24 +235,20 @@ pub const sectionFour =
 \\
 ;
 
+
 pub const sectionFive = 
-\\
-\\            if (!yy_more_flag) yy_more_len = 0;
 \\
 \\            if (!yy_hold_char_restored) {
 \\                yy_buffer[yy_buf_pos] = yy_hold_char;
 \\            }
-\\            // printf("Continue\n");
 \\            continue;
 \\        }
 \\
-\\        if (yy_more_len) {
-\\            yyleng += (int) (yy_buf_pos - start_pos);
-\\        } else {
-\\            yyleng = (int) (yy_buf_pos - start_pos);
-\\        }
-\\        yytext = &yy_buffer[start_pos - yy_more_len];
-\\        yy_more_len = 0;
+;
+
+pub const sectionSix =
+\\        yyleng = (int) (yy_buf_pos - start_pos);
+\\        yytext = &yy_buffer[start_pos];
 \\
 \\        //ECHO
 \\        fwrite(yytext, yyleng, 1, yyout);

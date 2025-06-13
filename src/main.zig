@@ -39,10 +39,8 @@ comptime {
 const   BUF_SIZE: usize = 4096;
 
 
-fn parseOptions(args: [][:0]u8) !struct {G.LexOptions, usize} {
-    if (args.len == 1) {
-        return .{G.options, 1};
-    }
+fn parseOptions(args: [][:0]u8) !usize {
+    if (args.len == 1) return 1;
 
     var arg_it: usize = 1;
     for (args[1..]) |arg| {
@@ -55,6 +53,8 @@ fn parseOptions(args: [][:0]u8) !struct {G.LexOptions, usize} {
                 't' => G.options.t = true,
                 'n' => G.options.n = true,
                 'v' => G.options.v = true,
+                'z' => G.options.zig = true,
+                'f' => G.options.fast = true,
                 else => {
                     print("ft_lex: Unrecognized option `{s}'\n", .{opt});
                     return error.UnrecognizedOption;
@@ -63,7 +63,7 @@ fn parseOptions(args: [][:0]u8) !struct {G.LexOptions, usize} {
         }
         arg_it += 1;
     }
-    return .{G.options, arg_it};
+    return arg_it;
 }
 
 const DebugAllocatorOptions: std.heap.DebugAllocatorConfig = .{
@@ -83,7 +83,7 @@ pub fn main() !u8 {
     const args = try std.process.argsAlloc(alloc);
     defer std.process.argsFree(alloc, args);
 
-    var options, const arg_it = parseOptions(args) catch {
+    const arg_it = parseOptions(args) catch {
         print("Usage: ft_lex [-t] [-n|-v] [file...]\n", .{});
         return 1;
     };
@@ -91,7 +91,7 @@ pub fn main() !u8 {
     if (args.len == arg_it) {
         @panic("Not implemented, please provide a file as an argument");
     } else {
-        options.inputName = args[arg_it];
+        G.options.inputName = args[arg_it];
         var lexParser = try LexParser.init(alloc, args[arg_it]);
         defer lexParser.deinit();
 
@@ -169,7 +169,6 @@ pub fn main() !u8 {
 
         // std.debug.print("UNCOMPRESSED\n", .{});
         // DFADump.transTableDump(finalDfa.transTable.?);
-
         std.log.info("Compressed eql: {}", .{ try finalDfa.compareTTToCTT() });
 
         if (G.options.compressed) {
