@@ -1,172 +1,96 @@
 const Templates = @This();
 
 pub const sectionOne = \\
-\\#include <stdlib.h>
-\\#include <stdio.h>
-\\#include <string.h>
-\\#define YY_READ_SIZE 256
+\\var yy_hold_char: u8 = 0;
+\\var yy_hold_char_restored: bool = false;
 \\
-\\//Extern variables needed by the libl
-\\extern int yymore(void);
-\\extern int yyless(int);
-\\extern int input(void);
-\\extern int unput(int);
-\\extern int yywrap(void);
+\\var yytext: []u8 = undefined;
+\\var yy_buffer: []u8 = undefined;
+\\var yy_buf_pos: usize = 0;
 \\
-\\extern void buffer_realloc(size_t);
-\\extern int yy_read_char(void);
-\\
-\\extern int yyleng;
-\\extern char *yytext;
-\\extern uint8_t yy_hold_char;
-\\extern size_t yy_buf_pos;
-\\extern int yy_more_flag;
-\\extern int yy_more_len;
-\\extern int yy_hold_char_restored;
-\\extern char *yy_buffer;
-\\extern size_t yy_buf_len;
-\\
-\\static size_t yy_buf_size = 0;    // total allocated size
-\\static int yy_interactive = 0;
-\\static int yy_start;
-\\
-\\//Global initialization
-\\char *yy_buffer = NULL;
-\\size_t yy_buf_len = 0;     // number of bytes currently filled
-\\size_t yy_buf_pos = 0;     // current read position
-\\int yy_hold_char_restored = 0; //used when calling input and unput in the same action
-\\uint8_t yy_hold_char = 0;
-\\char *yytext = NULL;
-\\int yyleng = 0;
-\\FILE *yyin = NULL; // input stream
-\\FILE *yyout = NULL;
+\\var yy_interactive: bool = 0;
+\\var yy_start: usize = 0;
 \\
 \\//yymore specific variables
-\\int yy_more_len = 0;
-\\int yy_more_flag = 0;
+\\var yy_more_len: usize = 0;
+\\var yy_more_flag: bool = false;
 \\
 \\//REJECT specific
-\\int yy_rejected = 0;
+\\var yy_rejected: bool = 0;
 \\
-\\void buffer_realloc(size_t min_required) {
-\\    size_t new_size = yy_buf_size == 0 ? YY_READ_SIZE : yy_buf_size;
+\\var yyin: ?std.fs.File = null;
+\\var yyout: ?std.fs.File = null;
 \\
-\\    if (yy_buf_size >= min_required) return ;
 \\
-\\    while (new_size < min_required)
-\\        new_size *= 2;
+\\fn readWholeFile(file: std.fs.File) ![]u8 {
+\\    return file.readToEndAlloc(std.heap.smp_allocator, 1e9);
+\\}
 \\
-\\    char *new_buffer = realloc(yy_buffer, new_size);
-\\    if (!new_buffer) {
-\\        fprintf(stderr, "Out of memory while reallocating buffer\n");
-\\        exit(1);
+\\fn yy_free_buffer() void {
+\\    std.heap.smp_allocator.free(yy_buffer);
+\\}
+\\
+\\inline fn BEGIN(condition: SC) void {
+\\    yy_start = @intFromEnum(condition);
+\\}
+\\
+\\inline fn ECHO() void {
+\\    if (yyout) |out| {
+\\        _ = out.writer().print("{s}", .{yytext}) catch @panic("fatal: yyout write error");
+\\    } else @panic("fatal: yyout is not defined");
+\\}
+\\
+\\inline fn YY_AT_BOL() bool {
+\\    return (yy_buf_pos == 0 or (yy_buf_pos > 0 and yy_buffer[yy_buf_pos - 1] == '\n'));
+\\}
+\\
+\\inline fn YY_BOL() usize {
+\\    return yy_start >> @as(u6, 16);
+\\}
+\\
+\\inline fn YY_DO_BEFORE_ACTION() void {
+\\    yy_hold_char = yytext[yytext.len];
+\\    yytext[yytext.len] = 0x00;
+\\    yy_hold_char_restored = false;
+\\}
+\\
+\\inline fn yy_next_state(state: usize, symbol: u8) i16 {
+\\    var s = state;
+\\    while (true) {
+\\        if (yy_check[@as(usize, @intCast(yy_base[s])) + symbol] == s)
+\\        return yy_next[@as(usize, @intCast(yy_base[s])) + symbol];
+\\        s = if (yy_default[s] == -1) return -1 else @intCast(yy_default[s]);
 \\    }
-\\
-\\    yy_buffer = new_buffer;
-\\    yy_buf_size = new_size;
 \\}
-\\
-\\static inline void buffer_join(size_t readSize, char *buffer) {
-\\    if (yy_buf_len + readSize > yy_buf_size) {
-\\        buffer_realloc(yy_buf_size + readSize);
-\\    }
-\\
-\\    memcpy(&yy_buffer[yy_buf_pos], buffer, readSize);
-\\}
-\\
-\\static inline void buffer_join_c(char c) {
-\\    if (yy_buf_len + 1 > yy_buf_size)
-\\        buffer_realloc(yy_buf_size + 1);
-\\
-\\    yy_buffer[yy_buf_len++] = c;
-\\}
-\\
-\\int yy_read_char(void) {
-\\    if (yy_buf_pos >= yy_buf_len) {
-\\        if (yy_interactive) {
-\\            char c = '*';
-\\            for ( int n = 0; n < yy_buf_size && (c = getc( yyin )) != EOF && c != '\n'; ++n ) {
-\\                buffer_join_c(c);
-\\            }
-\\            if (c == '\n')
-\\                buffer_join_c(c);
-\\
-\\            if (c == EOF) {
-\\                yy_buffer[yy_buf_pos] = EOF;
-\\                return EOF;
-\\            }
-\\        } else {
-\\            char buffer[YY_READ_SIZE];
-\\            memset(buffer, 0, YY_READ_SIZE);
-\\
-\\            int rsize = fread(buffer, 1, YY_READ_SIZE, yyin);
-\\            if (rsize == 0) {
-\\                yy_buffer[yy_buf_pos] = EOF;
-\\            } else {
-\\                buffer_join(rsize, buffer);
-\\            }
-\\            yy_buf_len += rsize;
-\\            if (rsize == 0) return EOF;
-\\        }
-\\    }
-\\    return yy_buffer[yy_buf_pos++];
-\\}
-\\
-\\
-\\static void yy_free_buffer(void) {
-\\    free(yy_buffer);
-\\    yy_buffer = NULL;
-\\    yy_buf_size = yy_buf_len = yy_buf_pos = 0;
-\\}
-\\
-\\
-\\#define ECHO do { if (fwrite( yytext, (size_t) yyleng, 1, yyout )) {} } while (0)
-\\#define BEGIN(condition) ((yy_start) = (condition))
-\\#define YY_AT_BOL() (yy_buf_pos == 0 || (yy_buf_pos > 0 && yy_buffer[yy_buf_pos - 1] == '\n'))
-\\#define YY_BOL() ((yy_start >> 16))
-\\#define YY_DO_BEFORE_ACTION do { \
-\\    yy_hold_char = yytext[yyleng]; \
-\\    yytext[yyleng] = '\0'; \
-\\    yy_hold_char_restored = 0; \
-\\} while(0); \
-\\
 \\
 ;
 
 
 pub const sectionTwo = \\
-\\static inline int yy_next_state(int s, int ec) {
-\\    while (s != -1) {
-\\        if (yy_check[yy_base[s] + ec] == s)
-\\            return yy_next[yy_base[s] + ec];
-\\        s = yy_default[s];
-\\    }
-\\    return s;
-\\}
 \\
-\\// --- Core DFA scanning function ---
-\\int yylex(void) {
+\\fn yylex(void) i32 {
 \\    BEGIN(INITIAL);
-\\//Added if the scanner is used in reentrant mode
-\\    if (yy_hold_char && !yy_hold_char_restored) {
+\\
+\\    if (yy_hold_char and !yy_hold_char_restored) {
 \\        yy_buffer[yy_buf_pos] = yy_hold_char;
 \\    }
 \\
-\\    if (!yyin) yyin = stdin;
-\\    if (!yyout) yyout = stdout;
+\\    if (yyin == null) yyin = stdin;
+\\    if (yyout == null) yyout = stdout;
 \\
-\\    while (1) {
-\\        int state = (yy_start & 0xFFFF);
-\\        int bol_state = YY_AT_BOL() ? YY_BOL() : -1;
+\\    while (true) {
+\\        var state: usize = (yy_start & 0xFFFF);
+\\        var bol_state: i32 = if (YY_AT_BOL()) YY_BOL() else -1;
 \\
-\\        int default_las = -1;
-\\        int default_lap = -1;
-\\        int bol_las = -1;
-\\        int bol_lap = -1;
+\\        var default_las: i32 = -1;
+\\        var default_lap: i32 = -1;
+\\        var bol_las: i32 = -1;
+\\        var bol_lap: i32 = -1;
 \\
-\\        int start_pos = yy_buf_pos;
-\\        int cur_pos = start_pos;
-\\        int last_read_c = -1;
+\\        var start_pos = yy_buf_pos;
+\\        var cur_pos = start_pos;
+\\        var last_read_c: i32 = -1;
+\\
 \\
 ;
 

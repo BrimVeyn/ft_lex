@@ -1,11 +1,8 @@
 %%
 
-abc/def {
-	printf("salut !\n");
+abc {
+	std.debug.print("{s}\n", .{yytext});
 }
 
 %%
 
-int func(void) {
-	return 1;
-}

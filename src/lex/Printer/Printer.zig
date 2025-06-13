@@ -27,6 +27,7 @@ fn printBodyZig(lexParser: LexParser, writer: anytype) !void {
     std.log.info("ZIG VERSION", .{});
 }
 
+
 pub fn print(
     ec: EC,
     dfas: ArrayListUnmanaged(DFA.DFA_SC),
@@ -46,19 +47,21 @@ pub fn print(
                     try std.fs.cwd().createFile("ft_lex.yy.c", .{}),
                 true
             };
-
     defer if (close) file.close();
 
     const writer = file.writer();
 
-    if (G.options.zig) try Zig.tables.printTables(dfa, tc_dfas, lexParser, ec, writer)
-    else try C.tables.printTables(dfa, tc_dfas, lexParser, ec, writer);
-
-    try printUserCode(lexParser, writer);
-    try C.sc.printSCEnum(lexParser, dfas, bol_dfas, writer);
-
-    if (G.options.zig) try Zig.body.printBody(lexParser, writer)
-    else try C.body.printBody(lexParser, writer);
+    if (G.options.zig) {
+        try Zig.tables.printTables(dfa, tc_dfas, lexParser, ec, writer);
+        try printUserCode(lexParser, writer);
+        try Zig.sc.printSCEnum(lexParser, dfas, bol_dfas, writer);
+        try Zig.body.printBody(lexParser, writer);
+    } else {
+        try C.tables.printTables(dfa, tc_dfas, lexParser, ec, writer);
+        try printUserCode(lexParser, writer);
+        try C.sc.printSCEnum(lexParser, dfas, bol_dfas, writer);
+        try C.body.printBody(lexParser, writer);
+    }
 
     if (lexParser.userSubroutines) |subroutine| {
         _ = try writer.write(subroutine);

@@ -18,7 +18,7 @@ pub fn printSCEnum(
         //But with current implementation, it'll be a lot of overhead to use this representation.
         // std.debug.print("Offset bol: {d}, offset regular: {d}\n", .{bol.dfa.offset, dfa.dfa.offset});
         const value = (bol.dfa.offset << @as(u6, 16)) + dfa.dfa.offset; 
-        _ = try writer.print("\t{s} = {d},\n", .{sc.name, value});
+        _ = try writer.print("    {s} = {d},\n", .{sc.name, value});
     }
     _ = try writer.write("};\n\n");
 }

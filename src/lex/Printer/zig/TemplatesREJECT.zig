@@ -1,6 +1,5 @@
 pub const noRejectFallback =
-\\#define REJECT reject_used_but_not_detected
-\\
+\\fn REJECT() void { @panic("REJECT used but not detected"); }
 ;
 
 pub const rejectDefinition =

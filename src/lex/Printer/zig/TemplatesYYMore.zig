@@ -1,7 +1,7 @@
 const Templates = @This();
 
 pub const noYYmoreFallback =
-\\#define yymore() yymore_used_but_not_detected
+\\fn yymore() void { @panic("yymore used but not detected"); }
 \\
 ;
 
