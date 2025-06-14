@@ -403,7 +403,7 @@ pub const LexTokenizer = struct {
         _ = self.eatTillNewLine();
         self.eatWhitespacesAndNewline();
 
-        std.log.info("Detected param with id: {c} and number: {d}", .{id, number});
+        // std.log.info("Detected param with id: {c} and number: {d}", .{id, number});
 
         switch (id) {
             'p' => G.options.maxPositions = number,
