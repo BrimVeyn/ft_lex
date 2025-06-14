@@ -1,50 +1,46 @@
 pub const noRejectFallback =
-\\fn REJECT() void { @panic("REJECT used but not detected"); }
+\\inline fn REJECT() void { @panic("REJECT used but not detected"); }
 ;
 
 pub const rejectDefinition =
-\\#define REJECT do  {\
-\\    if (!yy_hold_char_restored) { \
-\\        yy_buffer[yy_buf_pos] = yy_hold_char; \
-\\        yy_hold_char_restored = 1; \
-\\    } \
-\\    yy_rejected = 1; \
-\\    yy_buf_pos = start_pos; \
-\\    yy_reject[default_las] += 1; \
-\\} while(0);
+\\inline fn REJECT() void {
+\\    yy_rejected = true;
+\\    yy_buf_pos = start_pos;
+\\    yy_reject[@intCast(default_las)] += 1;
+\\}
 \\
 ;
 
 pub const rejectResetDirective =
-\\        if (!yy_rejected) memset(yy_reject, 0, sizeof(yy_reject));
+\\        if (!yy_rejected) @memset(yy_reject[0..], 0);
+\\
 ;
 
 pub const rejectBodySectionThree = 
-\\        yy_rejected = 0;
+\\        yy_rejected = false;
 \\
-\\        while (1) {
-\\            last_read_c = yy_read_char();
-\\
+\\        while (true) {
+\\            const last_read_c = yy_read_char();
 \\            if (last_read_c == EOF) break;
-\\            last_read_c = (unsigned char) last_read_c;
 \\
-\\            int sym = yy_ec[last_read_c];
+\\            const sym = yy_ec[@intCast(last_read_c)];
 \\
-\\            int next_state = yy_next_state(state, sym);
-\\            int bol_next_state = yy_next_state(bol_state, sym);
+\\            const next_state = yy_next_state(@intCast(state), sym);
+\\            const bol_next_state = if (bol_state == -1) -1 
+\\                else yy_next_state(@intCast(bol_state), sym);
 \\
-\\            if (next_state < 0 && bol_next_state < 0) break;
+\\            if (next_state == -1 and bol_next_state == -1) break;
 \\
 \\            state = next_state;
 \\            bol_state = bol_next_state;
 \\            cur_pos = yy_buf_pos;
 \\
-\\            if (bol_state != -1 && yy_accept[bol_state][yy_reject[bol_state]] > 0) {
+\\            if (bol_state != -1 and yy_accept[@intCast(bol_state)][yy_reject[@intCast(bol_state)]] > 0) {
 \\                bol_las = bol_state;
 \\                bol_lap = cur_pos;
 \\            }
 \\
-\\            if (state != -1 && yy_accept[state][yy_reject[state]] > 0) {
+\\            if (state != -1 and yy_accept[@intCast(state)][yy_reject[@intCast(state)]] > 0) {
 \\                default_las = state;
 \\                default_lap = cur_pos;
 \\            }
@@ -54,7 +50,10 @@ pub const rejectBodySectionThree =
 \\            if (bol_lap > default_lap) {
 \\                default_las = bol_las;
 \\                default_lap = bol_lap;
-\\            } else if (bol_lap == default_lap && yy_accept[bol_las][yy_reject[bol_las]] < yy_accept[default_las][yy_reject[default_las]]) {
+\\            } else if (bol_lap == default_lap 
+\\                and yy_accept[@intCast(bol_las)][yy_reject[@intCast(bol_las)]] < 
+\\                    yy_accept[@intCast(default_las)][yy_reject[@intCast(default_las)]]) 
+\\            {
 \\                default_las = bol_las;
 \\                default_lap = bol_lap;
 \\            }
@@ -63,7 +62,8 @@ pub const rejectBodySectionThree =
 \\        if (default_las > 0) {
 \\            yy_buf_pos = default_lap;
 \\
-\\            int accept_id = yy_accept[default_las][yy_reject[default_las]];
+\\            const accept_id: usize = @intCast(yy_accept[@intCast(default_las)][yy_reject[@intCast(default_las)]]);
+\\
 ;
 
 

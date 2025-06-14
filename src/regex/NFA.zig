@@ -364,16 +364,12 @@ pub const NFABuilder = struct {
                 //if we can compute either of the length, we don't need to include the backtracking
                 //mechanism since we can simply compute the effective match length. See Printer.printActions
                 if (inner.length()) |len| {
-                    std.debug.print("Marking left on rule: {d} with leng: {d}\n", .{it, len});
                     rule.trailingContext = .{ .side = .Left, .value = len, };
                     continue;
                 } else if (lookAhead.length()) |len| {
-                    std.debug.print("Marking right on rule: {d} with leng: {d}\n", .{it, len});
                     rule.trailingContext = .{ .side = .Right, .value = len };
                     continue;
-                } else {
-                    G.options.needTcBacktracking = true;
-                }
+                } else G.options.needTcBacktracking = true;
 
                 var start = try self.makeState(0);
                 try start.transitions.append(.{ .symbol = .{ .epsilon = {} }, .to = inner.start});

@@ -8,39 +8,29 @@ const actionsHead =
 ;
 
 const actionsTail =
-\\        default:
-\\            fprintf(stderr, "Unknown action id: %d\n", accept_id);
-\\            break;
-\\        }
+\\        else => yyout.?.writer().print("error: Unknown action id: {d}", .{accept_id}) catch {},
+\\    }
 \\
 ;
 
 const ruleHead =
-\\        case {d}:
-\\
-;
-
-const ruleTail =
-\\
-\\        break;
+\\        {d} =>
 \\
 ;
 
 const tcLeft =
 \\
-\\        yy_buffer[yy_buf_pos] = yy_hold_char;
 \\        yy_buf_pos = start_pos + {d};
-\\        yyleng = {0d};
-\\        YY_DO_BEFORE_ACTION
+\\        yytext = yy_buffer[start_pos..yy_buf_pos];
+\\        YY_DO_BEFORE_ACTION();
 \\
 ;
 
 const tcRight =
 \\
-\\        yy_buffer[yy_buf_pos] = yy_hold_char;
 \\        yy_buf_pos -= {d};
-\\        yyleng -= {0d};
-\\        YY_DO_BEFORE_ACTION
+\\        yytext = yy_buffer[start_pos..yy_buf_pos];
+\\        YY_DO_BEFORE_ACTION();
 \\
 ;
 
@@ -48,7 +38,7 @@ pub fn printActions(lParser: LexParser, writer: anytype) !void {
     _ = try writer.write(actionsHead);
     for (lParser.rules.items, 0..) |rule, i| {
         _ = try writer.print(ruleHead, .{i + 1});
-        _ = try writer.write("{");
+        _ = try writer.write("    {");
 
         //NOTE: Instead of generating the backtracking loop, we produce
         //these small code pieces to backtrack instantaneously
@@ -62,10 +52,12 @@ pub fn printActions(lParser: LexParser, writer: anytype) !void {
         _ = try writer.write(rule.code.code);
 
         //Do not insert break statement if the action is fallthrough
-        if (!mem.eql(u8, "|", rule.code.code))
-            _ = try writer.write(ruleTail);
+        //TODO: fuck
+        
+        // if (!mem.eql(u8, "|", rule.code.code))
+        //     _ = try writer.write(ruleTail);
 
-        _ = try writer.write("\n}");
+        _ = try writer.write("\n    },\n");
     }
     _ = try writer.write(actionsTail);
 }

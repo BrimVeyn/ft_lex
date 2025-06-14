@@ -1,12 +1,12 @@
 const Templates = @This();
 
 pub const noYYmoreFallback =
-\\fn yymore() void { @panic("yymore used but not detected"); }
+\\inline fn yymore() void { @panic("yymore used but not detected"); }
 \\
 ;
 
 pub const yyMoreSectionOne =
-\\        yy_more_flag = 0;
+\\        yy_more_flag = false;
 ;
 
 pub const tcBacktracking = 
@@ -14,89 +14,76 @@ pub const tcBacktracking =
 \\            if (yy_acclist[accept_id] != 0) {
 \\                yy_buf_pos = start_pos;
 \\
-\\                // printf("Started backtraking\n");
-\\                int tc_state = yy_acclist[accept_id];
-\\                int tc_las = -1;
-\\                int tc_lap = -1;
+\\                var tc_state: i16 = yy_acclist[accept_id];
+\\                var tc_cur_pos: usize = start_pos;
 \\
-\\                int tc_cur_pos = start_pos;
-\\                int last_read_c = -1;
+\\                var tc_lap: usize = 0;
+\\                var tc_last_c: i32 = -1;
 \\
-\\                while (1) {
-\\                    last_read_c = yy_read_char();
-\\                    if (last_read_c == EOF) break;
+\\                while (true) {
+\\                    tc_last_c = yy_read_char();
+\\                    if (tc_last_c == EOF) break;
 \\
-\\                    last_read_c = (unsigned char) last_read_c;
-\\
-\\                    int sym = yy_ec[last_read_c];
-\\                    int next_state = yy_next_state(tc_state, sym);
+\\                    const sym: u8 = yy_ec[@intCast(tc_last_c)];
+\\                    const next_state: i16 = yy_next_state(@intCast(tc_state), sym);
 \\
 \\                    if (next_state < 0) break;
 \\
 \\                    tc_state = next_state;
 \\                    tc_cur_pos = yy_buf_pos;
 \\
-\\                    if (yy_accept[tc_state] > 0) {
-\\                        tc_las = tc_state;
+\\                    if (yy_accept[@intCast(tc_state)] > 0)
 \\                        tc_lap = tc_cur_pos;
-\\                    }
 \\                }
 \\                yy_buf_pos = tc_lap;
-\\                default_lap = tc_lap;
 \\            }
+\\
 ;
 
 //Actions
 
-
 pub const yyMoreSectionTwo =
 \\
-\\            if (yy_more_len != 0) {
-\\                /*printf("Start pos: %d, yyleng: %d\n", start_pos, yyleng);*/
-\\                yytext = &yy_buffer[start_pos - yyleng];
-\\                yyleng += (default_lap - start_pos);
-\\            } else {
-\\                yytext = &yy_buffer[start_pos];
-\\                yyleng = default_lap - start_pos;
+\\            if (yy_more_len != 0) 
+\\                yytext = yy_buffer[(start_pos - yy_more_len)..yy_buf_pos]
+\\                //yytext.len += (yy_buf_pos - start_pos);
+\\            else {
+\\                yytext = yy_buffer[start_pos..yy_buf_pos];
 \\                yy_more_len = 0;
 \\            }
 \\
-\\            YY_DO_BEFORE_ACTION
-\\
+\\            YY_DO_BEFORE_ACTION();
 \\
 ;
 
 pub const yyMoreBodySectionFive = 
 \\
-\\            if (!yy_more_flag) yy_more_len = 0;
+\\            if (!yy_more_flag) 
+\\                yy_more_len = 0;
 \\
-\\            if (!yy_hold_char_restored) {
-\\                yy_buffer[yy_buf_pos] = yy_hold_char;
-\\            }
 \\            continue;
 \\        }
 \\
 ;
 
 pub const yyMoreBodySectionSix =
-\\        if (yy_more_len) {
-\\            yyleng += (int) (yy_buf_pos - start_pos);
-\\        } else {
-\\            yyleng = (int) (yy_buf_pos - start_pos);
-\\        }
-\\        yytext = &yy_buffer[start_pos - yy_more_len];
+\\        yytext = yy_buffer[start_pos - yy_more_len..yy_buf_pos];
 \\        yy_more_len = 0;
 \\
-\\        //ECHO
-\\        fwrite(yytext, yyleng, 1, yyout);
-\\        if (yy_buffer[yy_buf_pos] == EOF) break;
+\\        _ = yyout.?.write(yytext) catch {};
+\\        if (yy_buf_pos == yy_buffer.len) break;
 \\    }
 \\
 \\    yy_free_buffer();
-\\    fclose(yyin);
-\\    yywrap();
-\\
+\\    yyin.?.close();
+\\    // yywrap();
 \\    return 0;
+\\}
+\\
+\\pub fn main() !u8 {
+\\    yyin = try std.fs.cwd().openFile("test.lang", .{});
+\\    _ = yylex();
+\\    return 1;
 \\}
 \\
 ;

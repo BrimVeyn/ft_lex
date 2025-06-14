@@ -6,6 +6,7 @@ pub const sectionOne = \\
 \\
 \\var yytext: []u8 = undefined;
 \\var yy_buffer: []u8 = undefined;
+\\var yy_buffer_initialized: bool = false;
 \\var yy_buf_pos: usize = 0;
 \\
 \\var yy_interactive: bool = 0;
@@ -16,14 +17,32 @@ pub const sectionOne = \\
 \\var yy_more_flag: bool = false;
 \\
 \\//REJECT specific
-\\var yy_rejected: bool = 0;
+\\var yy_rejected: bool = false;
 \\
 \\var yyin: ?std.fs.File = null;
 \\var yyout: ?std.fs.File = null;
 \\
+\\var start_pos: usize = 0;
+\\var default_las: i32 = -1;
+\\
+\\const EOF: i32 = -1;
 \\
 \\fn readWholeFile(file: std.fs.File) ![]u8 {
 \\    return file.readToEndAlloc(std.heap.smp_allocator, 1e9);
+\\}
+\\
+\\fn yy_read_char() i32 {
+\\    if (!yy_buffer_initialized) {
+\\        yy_buffer = readWholeFile(yyin.?) catch {
+\\            @panic("fatal: error while reading yyin");
+\\        };
+\\        yy_buffer_initialized = true;
+\\    }
+\\
+\\    if (yy_buf_pos == yy_buffer.len) return EOF;
+\\
+\\    defer yy_buf_pos += 1;
+\\    return yy_buffer[yy_buf_pos];
 \\}
 \\
 \\fn yy_free_buffer() void {
@@ -44,22 +63,26 @@ pub const sectionOne = \\
 \\    return (yy_buf_pos == 0 or (yy_buf_pos > 0 and yy_buffer[yy_buf_pos - 1] == '\n'));
 \\}
 \\
-\\inline fn YY_BOL() usize {
-\\    return yy_start >> @as(u6, 16);
+\\inline fn YY_BOL() i16 {
+\\    return @as(i16, @intCast(yy_start >> @as(u6, 16)));
 \\}
 \\
 \\inline fn YY_DO_BEFORE_ACTION() void {
-\\    yy_hold_char = yytext[yytext.len];
-\\    yytext[yytext.len] = 0x00;
-\\    yy_hold_char_restored = false;
+\\}
+\\
+\\inline fn yymore() void {
+\\    yy_more_len = yytext.len;
+\\    yy_more_flag = true;
 \\}
 \\
 \\inline fn yy_next_state(state: usize, symbol: u8) i16 {
 \\    var s = state;
 \\    while (true) {
-\\        if (yy_check[@as(usize, @intCast(yy_base[s])) + symbol] == s)
-\\        return yy_next[@as(usize, @intCast(yy_base[s])) + symbol];
-\\        s = if (yy_default[s] == -1) return -1 else @intCast(yy_default[s]);
+\\        if (yy_check[@intCast(yy_base[s] + symbol)] == s)
+\\            return yy_next[@intCast(yy_base[s] + symbol)];
+\\        s = if (yy_default[s] == -1) 
+\\                return -1 
+\\            else @intCast(yy_default[s]);
 \\    }
 \\}
 \\
@@ -68,122 +91,106 @@ pub const sectionOne = \\
 
 pub const sectionTwo = \\
 \\
-\\fn yylex(void) i32 {
-\\    BEGIN(INITIAL);
-\\
-\\    if (yy_hold_char and !yy_hold_char_restored) {
-\\        yy_buffer[yy_buf_pos] = yy_hold_char;
-\\    }
+\\fn yylex() i32 {
+\\    BEGIN(.INITIAL);
 \\
 \\    if (yyin == null) yyin = stdin;
 \\    if (yyout == null) yyout = stdout;
 \\
 \\    while (true) {
-\\        var state: usize = (yy_start & 0xFFFF);
-\\        var bol_state: i32 = if (YY_AT_BOL()) YY_BOL() else -1;
+\\        var state: i16 = @intCast(yy_start & 0xFFFF);
+\\        var bol_state: i16 = if (YY_AT_BOL()) YY_BOL() else -1;
 \\
-\\        var default_las: i32 = -1;
-\\        var default_lap: i32 = -1;
+\\        default_las = -1;
 \\        var bol_las: i32 = -1;
-\\        var bol_lap: i32 = -1;
+\\        var bol_lap: usize = 0;
+\\        var default_lap: usize = 0;
 \\
-\\        var start_pos = yy_buf_pos;
+\\
+\\        start_pos = yy_buf_pos;
 \\        var cur_pos = start_pos;
-\\        var last_read_c: i32 = -1;
 \\
 \\
 ;
 
 pub const sectionThree =
 \\
-\\        while (1) {
-\\            last_read_c = yy_read_char();
-\\            /*printf("Read: %d %d at pos: %d\n", last_read_c, last_read_c, yy_buf_pos);*/
-\\
+\\        while (true) {
+\\            const last_read_c = yy_read_char();
 \\            if (last_read_c == EOF) break;
-\\            last_read_c = (unsigned char) last_read_c;
 \\
-\\            int sym = yy_ec[last_read_c];
+\\            const sym = yy_ec[@intCast(last_read_c)];
 \\
-\\            int next_state = yy_next_state(state, sym);
-\\            int bol_next_state = yy_next_state(bol_state, sym);
+\\            const next_state = yy_next_state(@intCast(state), sym);
+\\            const bol_next_state = if (bol_state == -1) -1 
+\\                else yy_next_state(@intCast(bol_state), sym);
 \\
-\\            // printf("bol_next_state: %d, next_state: %d\n", bol_next_state, next_state);
-\\
-\\            if (next_state < 0 && bol_next_state < 0) break;
+\\            if (next_state == -1 and bol_next_state == -1) break;
 \\
 \\            state = next_state;
 \\            bol_state = bol_next_state;
 \\            cur_pos = yy_buf_pos;
 \\
-\\            if (bol_state != -1 && yy_accept[bol_state] > 0) {
+\\            if (bol_state != -1 and yy_accept[@intCast(bol_state)] > 0) {
 \\                bol_las = bol_state;
 \\                bol_lap = cur_pos;
-\\                /*printf("Match bol with: %d %d\n", default_las, default_lap);*/
 \\            }
 \\
-\\            if (state != -1 && yy_accept[state] > 0) {
+\\            if (state != -1 and yy_accept[@intCast(state)] > 0) {
 \\                default_las = state;
 \\                default_lap = cur_pos;
-\\                /*printf("Match normal with: %d %d\n", default_las, default_lap);*/
 \\            }
 \\        }
 \\
 \\        if (bol_las > 0) {
 \\            if (bol_lap > default_lap) {
 \\                default_las = bol_las;
-\\                default_lap = bol_lap;
-\\            } else if (bol_lap == default_lap && yy_accept[bol_las] < yy_accept[default_las]) {
+\\                default_lap = @intCast(bol_lap);
+\\            } else if (bol_lap == default_lap and yy_accept[@intCast(bol_las)] < yy_accept[@intCast(default_las)]) {
 \\                default_las = bol_las;
-\\                default_lap = bol_lap;
+\\                default_lap = @intCast(bol_lap);
 \\            }
 \\        }
 \\
 \\
-\\        /*printf("buf_pos: %d, default_lap: %d, default_las: %d\n", yy_buf_pos, default_lap, default_las);*/
 \\        if (default_las > 0) {
-\\            // Backtrack
 \\            yy_buf_pos = default_lap;
-\\
-\\            int accept_id = yy_accept[default_las];
-\\
+\\            const accept_id: usize = @intCast(yy_accept[@intCast(default_las)]);
 \\
 ;
 
 pub const sectionFour = 
 \\
-\\            yytext = &yy_buffer[start_pos];
-\\            yyleng = default_lap - start_pos;
-\\            YY_DO_BEFORE_ACTION
+\\            yytext = yy_buffer[start_pos..yy_buf_pos];
+\\            YY_DO_BEFORE_ACTION();
 \\
 \\
 ;
 
 
 pub const sectionFive = 
-\\
-\\            if (!yy_hold_char_restored) {
-\\                yy_buffer[yy_buf_pos] = yy_hold_char;
-\\            }
 \\            continue;
 \\        }
 \\
 ;
 
 pub const sectionSix =
-\\        yyleng = (int) (yy_buf_pos - start_pos);
-\\        yytext = &yy_buffer[start_pos];
+\\        yytext = yy_buffer[start_pos..yy_buf_pos];
 \\
-\\        //ECHO
-\\        fwrite(yytext, yyleng, 1, yyout);
-\\        if (yy_buffer[yy_buf_pos] == EOF) break;
+\\        _ = yyout.?.write(yytext) catch {};
+\\        if (yy_buf_pos == yy_buffer.len) break;
 \\    }
 \\
 \\    yy_free_buffer();
-\\    fclose(yyin);
-\\    yywrap();
-\\
+\\    yyin.?.close();
+\\    // yywrap();
 \\    return 0;
+\\}
+\\
+\\pub fn main() !u8 {
+\\    yyin = try std.fs.cwd().openFile("test.lang", .{});
+\\    _ = yylex();
+\\    return 1;
 \\}
 \\
 ;

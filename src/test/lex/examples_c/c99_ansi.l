@@ -1,9 +1,6 @@
-%e  1019
-%p  2807
-%n  371
-%k  284
-%a  1213
-%o  1117
+%e 1500
+%n 1500
+
 
 O   [0-7]
 D   [0-9]
@@ -139,4 +136,6 @@ WS  [ \t\v\n\f]
 
 {WS}+					{ /* whitespace separates tokens */ }
 .					{ /* discard bad characters */ }
+
+
 

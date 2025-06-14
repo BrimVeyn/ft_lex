@@ -1,34 +1,38 @@
-const std               = @import("std");
-const LexParser         = @import("../../lex/Parser.zig");
-const EC                = @import("../../regex/EquivalenceClasses.zig");
+const std             = @import("std");
+const LexParser       = @import("../../lex/Parser.zig");
+const EC              = @import("../../regex/EquivalenceClasses.zig");
 
-const NFAModule         = @import("../../regex/NFA.zig");
-const NFA               = NFAModule.NFA;
+const NFAModule       = @import("../../regex/NFA.zig");
+const NFA             = NFAModule.NFA;
 
-const DFAModule         = @import("../../regex/DFA.zig");
-const DFA               = DFAModule.DFA;
+const DFAModule       = @import("../../regex/DFA.zig");
+const DFA             = DFAModule.DFA;
 
-const DFAMinimizer      = @import("../../regex/DFA_minimizer.zig");
+const DFAMinimizer    = @import("../../regex/DFA_minimizer.zig");
 
-const ParserModule      = @import("../../regex/Parser.zig");
-const RegexParser       = ParserModule.Parser;
-const RegexNode         = ParserModule.RegexNode;
-const Printer           = @import("../../lex/Printer/Printer.zig");
-const G                 = @import("../../globals.zig");
+const ParserModule    = @import("../../regex/Parser.zig");
+const RegexParser     = ParserModule.Parser;
+const RegexNode       = ParserModule.RegexNode;
+const Printer         = @import("../../lex/Printer/Printer.zig");
+const G               = @import("../../globals.zig");
 
-var   yy_ec: [256]u8     = .{0} ** 256;
-const outputDir          = "src/test/lex/outputs/";
-const libPath            = "src/libl/libl.a";
+var   yy_ec: [256]u8  = .{0} ** 256;
+const outputDir       = "src/test/lex/outputs/";
+const libPath         = "src/libl/libl.a";
+
+const libflPath       = "-ll";
+// const libflPath       = "/home/bvan-pae/Documents/homebrew/opt/flex/lib/libfl.a";
+
+const testDirC        = "src/test/lex/examples_c/";
+const testDirZig      = "src/test/lex/examples_zig/";
 
 ///Runs ft_lex, compiles its output file and run it on the langFile
 ///
 /// - `lFile`: path to the .l file to parse
 /// - `langFile`: path to the .lang file to lex
 fn produceFtLexOutput(alloc: std.mem.Allocator, lFile: []const u8, langFile: []const u8) !void {
-    //NOTE: Reset this global otherwise we can't run more than one test sequentially
     DFAMinimizer.offset = 0;
     G.resetGlobals();
-
 
     var lexParser = try LexParser.init(alloc, @constCast(lFile));
     defer lexParser.deinit();
@@ -43,12 +47,10 @@ fn produceFtLexOutput(alloc: std.mem.Allocator, lFile: []const u8, langFile: []c
 
     for (lexParser.rules.items) |rule| {
         regexParser.loadSlice(rule.regex);
-        // std.debug.print("Parsing regex: {s}", .{rule.regex});
         const head = regexParser.parse() catch |e| {
             std.log.err("\"{s}\": {!}", .{rule.regex, e});
             return;
         };
-        // head.dump(0);
         try headList.append(head);
     }
 
@@ -107,8 +109,6 @@ fn produceFtLexOutput(alloc: std.mem.Allocator, lFile: []const u8, langFile: []c
         \\{2s}{1s}ftlex < {3s} > {2s}{1s}ftlex.output
     , .{buffer[0..stream.pos], std.fs.path.basename(lFile), outputDir, langFile, libPath});
 
-    // std.debug.print("{s}\n\n\n", .{argBuffer[0..argStream.pos]});
-
     var child = std.process.Child.init(&[_][]const u8{
         "bash", "-c", argBuffer[0..argStream.pos],
     }, alloc);
@@ -138,11 +138,9 @@ fn produceFlexOutput(alloc: std.mem.Allocator, lFile: []const u8, langFile: []co
 
     try argWriter.print(
         \\flex -o {0s} -i {1s} &&
-        \\clang {0s} -o {3s}{2s}flex /home/bvan-pae/Documents/homebrew/opt/flex/lib/libfl.a &&
+        \\clang {0s} -o {3s}{2s}flex {5s} &&
         \\{3s}{2s}flex > {3s}{2s}flex.output < {4s}
-    , .{buffer[0..stream.pos], lFile, std.fs.path.basename(lFile), outputDir, langFile});
-
-    // std.debug.print("{s}\n\n\n", .{argBuffer[0..argStream.pos]});
+    , .{buffer[0..stream.pos], lFile, std.fs.path.basename(lFile), outputDir, langFile, libflPath});
 
     var child = std.process.Child.init(&[_][]const u8{
         "bash", "-c", argBuffer[0..argStream.pos],
@@ -156,6 +154,7 @@ fn produceFlexOutput(alloc: std.mem.Allocator, lFile: []const u8, langFile: []co
 
     const term = try child.spawnAndWait();
     try std.testing.expectEqual(0, term.Exited);
+    std.log.info("Success", .{});
 }
 
 ///Compares ft_lex's output to flex's output
@@ -166,7 +165,6 @@ fn produceFlexOutput(alloc: std.mem.Allocator, lFile: []const u8, langFile: []co
 ///Doesn't return but asserts equality
 fn compareOutput(lFile: []const u8, langFile: []const u8) !void {
     const alloc = std.testing.allocator;
-
     std.fs.cwd().makeDir(outputDir) catch {};
 
     try produceFtLexOutput(alloc, lFile, langFile);
@@ -180,8 +178,6 @@ fn compareOutput(lFile: []const u8, langFile: []const u8) !void {
         \\diff {0s}{1s}ftlex.output {0s}{1s}flex.output
     , .{outputDir, std.fs.path.basename(lFile)});
 
-    // std.debug.print("{s}\n\n\n", .{argBuffer[0..argStream.pos]});
-
     var child = std.process.Child.init(&[_][]const u8{
         "bash", "-c", argBuffer[0..argStream.pos],
     }, alloc);
@@ -196,142 +192,151 @@ fn compareOutput(lFile: []const u8, langFile: []const u8) !void {
     try std.testing.expectEqual(0, term.Exited);
 }
 
+
 test "C like syntax" {
     try compareOutput(
-        "src/test/lex/examples/c_like_syntax.l", 
-        "src/test/lex/examples/c_like_syntax.lang"
+        testDirC ++ "c_like_syntax.l", 
+        testDirC ++ "c_like_syntax.lang"
     );
 }
 
 test "Easy start conditions" {
     try compareOutput(
-        "src/test/lex/examples/start_conditions.l", 
-        "src/test/lex/examples/start_conditions.lang"
+        testDirC ++ "start_conditions.l", 
+        testDirC ++ "start_conditions.lang"
     );
 }
 
 test "Hard start conditions" {
     try compareOutput(
-        "src/test/lex/examples/start_conditions_2.l", 
-        "src/test/lex/examples/start_conditions_2.lang"
+        testDirC ++ "start_conditions_2.l", 
+        testDirC ++ "start_conditions_2.lang"
     );
 }
 
 test "Easy start conditions and bol" {
     try compareOutput(
-        "src/test/lex/examples/start_conditions_and_bol.l", 
-        "src/test/lex/examples/start_conditions_and_bol.lang"
+        testDirC ++ "start_conditions_and_bol.l", 
+        testDirC ++ "start_conditions_and_bol.lang"
     );
 }
 
 test "Hard start conditions and bol" {
     try compareOutput(
-        "src/test/lex/examples/start_conditions_and_bol_2.l", 
-        "src/test/lex/examples/start_conditions_and_bol_2.lang"
+        testDirC ++ "start_conditions_and_bol_2.l", 
+        testDirC ++ "start_conditions_and_bol_2.lang"
     );
 }
 
 test "Overlapping bol and default" {
     try compareOutput(
-        "src/test/lex/examples/bol_longest_match.l",
-        "src/test/lex/examples/bol_longest_match.lang",
+        testDirC ++ "bol_longest_match.l",
+        testDirC ++ "bol_longest_match.lang",
     );
 }
 
 test "C99 ANSI syntax" {
     try compareOutput(
-        "src/test/lex/examples/c99_ansi.l",
-        "src/test/lex/examples/c99_ansi.lang",
+        testDirC ++ "c99_ansi.l",
+        testDirC ++ "c99_ansi.lang",
     );
 }
 
 test "Easy trailing context" {
     try compareOutput(
-        "src/test/lex/examples/easy_tc.l",
-        "src/test/lex/examples/easy_tc.lang",
+        testDirC ++ "easy_tc.l",
+        testDirC ++ "easy_tc.lang",
     );
 }
 
 test "Hard trailing context" {
     try compareOutput(
-        "src/test/lex/examples/hard_tc.l",
-        "src/test/lex/examples/hard_tc.lang",
+        testDirC ++ "hard_tc.l",
+        testDirC ++ "hard_tc.lang",
     );
 }
 
 test "Extreme trailing context" {
     try compareOutput(
-        "src/test/lex/examples/extreme_tc.l",
-        "src/test/lex/examples/extreme_tc.lang",
+        testDirC ++ "extreme_tc.l",
+        testDirC ++ "extreme_tc.lang",
     );
 }
 
 test "Wc" {
     try compareOutput(
-        "src/test/lex/examples/wc.l",
-        "src/test/lex/examples/wc.lang",
+        testDirC ++ "wc.l",
+        testDirC ++ "wc.lang",
     );
 }
 
 test "Easy input() and unput()" {
     try compareOutput(
-        "src/test/lex/examples/easy_input_unput.l",
-        "src/test/lex/examples/easy_input_unput.lang",
+        testDirC ++ "easy_input_unput.l",
+        testDirC ++ "easy_input_unput.lang",
     );
 }
 
 test "Hard input() and unput()" {
     try compareOutput(
-        "src/test/lex/examples/hard_input_unput.l",
-        "src/test/lex/examples/hard_input_unput.lang",
+        testDirC ++ "hard_input_unput.l",
+        testDirC ++ "hard_input_unput.lang",
     );
 }
 
 test "Hard input() and unput() 2" {
     try compareOutput(
-        "src/test/lex/examples/hard_input_unput_2.l",
-        "src/test/lex/examples/hard_input_unput_2.lang",
+        testDirC ++ "hard_input_unput_2.l",
+        testDirC ++ "hard_input_unput_2.lang",
     );
 }
 
 test "Extreme input() and unput()" {
     try compareOutput(
-        "src/test/lex/examples/extreme_input_unput.l",
-        "src/test/lex/examples/extreme_input_unput.lang",
+        testDirC ++ "extreme_input_unput.l",
+        testDirC ++ "extreme_input_unput.lang",
     );
 }
 
 test "Easy yymore()" {
     try compareOutput(
-        "src/test/lex/examples/easy_yymore.l",
-        "src/test/lex/examples/easy_yymore.lang",
+        testDirC ++ "easy_yymore.l",
+        testDirC ++ "easy_yymore.lang",
     );
 }
 
 test "Easy yymore() 2" {
     try compareOutput(
-        "src/test/lex/examples/easy_yymore_2.l",
-        "src/test/lex/examples/easy_yymore_2.lang",
+        testDirC ++ "easy_yymore_2.l",
+        testDirC ++ "easy_yymore_2.lang",
     );
 }
 
 test "Medium yymore()" {
     try compareOutput(
-        "src/test/lex/examples/medium_yymore.l",
-        "src/test/lex/examples/medium_yymore.lang",
+        testDirC ++ "medium_yymore.l",
+        testDirC ++ "medium_yymore.lang",
     );
 }
 
 test "Easy yyless()" {
     try compareOutput(
-        "src/test/lex/examples/easy_yyless.l",
-        "src/test/lex/examples/easy_yyless.lang"
+        testDirC ++ "easy_yyless.l",
+        testDirC ++ "easy_yyless.lang"
     );
 }
 
 test "Easy REJECT" {
     try compareOutput(
-        "src/test/lex/examples/easy_REJECT.l",
-        "src/test/lex/examples/easy_REJECT.lang"
+        testDirC ++ "easy_REJECT.l",
+        testDirC ++ "easy_REJECT.lang"
+    );
+}
+
+
+test "[ZIG] Easy yy_more()" {
+    try compareOutput(
+        testDirZig ++ "easy_yymore.l",
+        testDirC ++ "easy_yymore.lang",
     );
 }
