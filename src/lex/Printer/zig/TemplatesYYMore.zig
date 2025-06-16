@@ -1,9 +1,6 @@
 const Templates = @This();
 
-pub const noYYmoreFallback =
-\\inline fn yymore() void { @panic("yymore used but not detected"); }
-\\
-;
+pub const noYYmoreFallback = "";
 
 pub const yyMoreSectionOne =
 \\        yy_more_flag = false;
@@ -46,7 +43,6 @@ pub const yyMoreSectionTwo =
 \\
 \\            if (yy_more_len != 0) 
 \\                yytext = yy_buffer[(start_pos - yy_more_len)..yy_buf_pos]
-\\                //yytext.len += (yy_buf_pos - start_pos);
 \\            else {
 \\                yytext = yy_buffer[start_pos..yy_buf_pos];
 \\                yy_more_len = 0;
@@ -71,19 +67,13 @@ pub const yyMoreBodySectionSix =
 \\        yy_more_len = 0;
 \\
 \\        _ = yyout.?.write(yytext) catch {};
-\\        if (yy_buf_pos == yy_buffer.len) break;
+\\        if (yy_buf_pos == yy_buffer.len and last_read_c == EOF) break;
 \\    }
 \\
 \\    yy_free_buffer();
 \\    yyin.?.close();
-\\    // yywrap();
+\\    _ = yywrap();
 \\    return 0;
-\\}
-\\
-\\pub fn main() !u8 {
-\\    yyin = try std.fs.cwd().openFile("test.lang", .{});
-\\    _ = yylex();
-\\    return 1;
 \\}
 \\
 ;

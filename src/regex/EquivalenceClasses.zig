@@ -1,4 +1,5 @@
 const std = @import("std");
+const G = @import("../globals.zig");
 
 const EC = @This();
 
@@ -10,6 +11,8 @@ pub fn buildEquivalenceTable(
     sets: std.AutoArrayHashMap(std.StaticBitSet(256), void),
 ) !EC {
     var ret = EC{};
+    if (G.options.fast) return ret;
+
     var signatures = std.AutoArrayHashMap(std.StaticBitSet(256), u8).init(alloc);
     defer signatures.deinit();
 

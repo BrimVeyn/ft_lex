@@ -11,6 +11,9 @@ const Actions         = @import("actions.zig");
 pub fn printBody(lexParser: LexParser, writer: anytype) anyerror!void {
     _ = try writer.write(Templates.sectionOne);
 
+    if (!G.options.yyWrapDefined)
+        _ = try writer.write(Templates.defaultYyWrap);
+
     if (!G.options.needYYMore)
         _ = try writer.write(TemplatesYYMore.noYYmoreFallback);
 
@@ -55,6 +58,10 @@ pub fn printBody(lexParser: LexParser, writer: anytype) anyerror!void {
         _ = try writer.write(Templates.sectionSix);
     } else {
         _ = try writer.write(TemplatesYYMore.yyMoreBodySectionSix);
+    }
+
+    if (!G.options.mainDefined) {
+        _ = try writer.write(Templates.defaultMain);
     }
 }
 

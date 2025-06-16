@@ -10,6 +10,8 @@ const Definitions           = DefinitionsModule.Definitions;
 const RuleModule            = @import("Rules.zig");
 const Rule                  = RuleModule.Rule;
 
+const G                     = @import("../globals.zig");
+
 const LexParser = @This();
 
 const LexParserError = error {
@@ -308,7 +310,13 @@ fn parseUserSubroutines(self: *LexParser) !void {
     self.tokenizer.eatWhitespacesAndNewline();
     const maybeSuroutine = try self.advance();
     switch (maybeSuroutine) {
-        .userSuboutines => |routine| self.userSubroutines = routine,
+        .userSuboutines => |routine| {
+            self.userSubroutines = routine;
+            if (std.mem.indexOf(u8, routine, "main()") != null) 
+                G.options.mainDefined = true;
+            if (std.mem.indexOf(u8, routine, "yywrap()") != null)
+                G.options.yyWrapDefined = true;
+        },
         else => self.userSubroutines = null,
     }
     // std.debug.print("Subroutine: \"{s}\"\n", .{self.userSubroutines orelse "null"});

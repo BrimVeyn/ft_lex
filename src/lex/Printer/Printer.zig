@@ -16,7 +16,9 @@ const Zig                = @import("zig/init.zig");
 
 fn printUserCode(lexParser: LexParser, writer: anytype) !void {
     for (lexParser.definitions.cCodeFragments.items) |codeFragment| {
-        try writer.print("#line {d} \"{s}\"\n", .{codeFragment.lineNo, G.options.inputName});
+        if (G.options.zig == false) {
+            try writer.print("#line {d} \"{s}\"\n", .{codeFragment.lineNo, G.options.inputName});
+        }
         _ = try writer.write(codeFragment.code);
         _ = try writer.write("\n\n");
     }
@@ -79,13 +81,19 @@ pub fn printTo(
     lexParser: LexParser,
     writer: anytype,
 ) !void {
-    try C.tables.printTables(dfa, tc_dfas, lexParser, ec, writer);
-    try printUserCode(lexParser, writer);
-    try C.sc.printSCEnum(lexParser, dfas, bol_dfas, writer);
-    try C.body.printBody(lexParser, writer);
+    if (G.options.zig) {
+        try Zig.tables.printTables(dfa, tc_dfas, lexParser, ec, writer);
+        try printUserCode(lexParser, writer);
+        try Zig.sc.printSCEnum(lexParser, dfas, bol_dfas, writer);
+        try Zig.body.printBody(lexParser, writer);
+    } else {
+        try C.tables.printTables(dfa, tc_dfas, lexParser, ec, writer);
+        try printUserCode(lexParser, writer);
+        try C.sc.printSCEnum(lexParser, dfas, bol_dfas, writer);
+        try C.body.printBody(lexParser, writer);
+    }
 
     if (lexParser.userSubroutines) |subroutine| {
-        std.debug.print("Used user subroutine\n", .{});
         _ = try writer.write(subroutine);
     }
 }

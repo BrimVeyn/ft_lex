@@ -219,32 +219,48 @@ pub const NFABuilder = struct {
                 self.next_id += 1;
                 var accept = try self.makeState(self.next_id);
 
-                var used_classes = std.StaticBitSet(256).initEmpty();
-                for (0..256) |i| {
-                    const iU8: u8 = @intCast(i);
-                    if ((!class.negate and class.range.isSet(iU8)) or
-                        (class.negate and !class.range.isSet(iU8))
-                    ) {
-                        const ec = self.yy_ec[iU8];
-                        //NOTE: ec 0 is reserved for \x00 and canno't be matched, even with negated classes
-                        if (ec == 0) 
-                            continue;
-                        used_classes.set(ec);
+                if (G.options.fast) {
+                    for (0..256) |i| {
+                        const iU8: u8 = @intCast(i);
+                        if (node.CharClass.range.isSet(i)) {
+                            const inner = try self.astToNfa(try ParserMakers.makeNode(self.parser, .{.Char = iU8}));
+                            try start.transitions.append(.{.symbol = .{ .epsilon = {} }, .to = inner.start });
+                            try inner.accept.transitions.append(.{.symbol = .{ .epsilon = {} }, .to = accept });
+                        }
                     }
+
+                    accept.id = self.next_id;
+                    self.next_id += 1;
+
+                    return NFA { .start = start, .accept = accept };
+                } else {
+                    var used_classes = std.StaticBitSet(256).initEmpty();
+                    for (0..256) |i| {
+                        const iU8: u8 = @intCast(i);
+                        if ((!class.negate and class.range.isSet(iU8)) or
+                           (class.negate and !class.range.isSet(iU8))
+                        ) {
+                            const ec = self.yy_ec[iU8];
+                            //NOTE: ec 0 is reserved for \x00 and canno't be matched, even with negated classes
+                            if (ec == 0) 
+                            continue;
+                            used_classes.set(ec);
+                        }
+                    }
+
+                    var used_it = used_classes.iterator(.{});
+                    // std.debug.print("classes:\n", .{});
+                    while (used_it.next()) |ec_id| {
+                        const ec: u8 = @intCast(ec_id);
+                        // std.debug.print("CLASSES: {d}\n", .{ec});
+                        try start.transitions.append(.{.symbol = .{ .ec = ec }, .to = accept });
+                    }
+
+                    accept.id = self.next_id;
+                    self.next_id += 1;
+
+                    return NFA { .start = start, .accept = accept };
                 }
-
-                var used_it = used_classes.iterator(.{});
-                // std.debug.print("classes:\n", .{});
-                while (used_it.next()) |ec_id| {
-                    const ec: u8 = @intCast(ec_id);
-                    // std.debug.print("CLASSES: {d}\n", .{ec});
-                    try start.transitions.append(.{.symbol = .{ .ec = ec }, .to = accept });
-                }
-
-                accept.id = self.next_id;
-                self.next_id += 1;
-
-                return NFA { .start = start, .accept = accept };
             },
             .Repetition => {
                 //NOTE: Kleene star

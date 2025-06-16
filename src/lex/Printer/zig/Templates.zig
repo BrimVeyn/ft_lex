@@ -8,8 +8,6 @@ pub const sectionOne = \\
 \\var yy_buffer: []u8 = undefined;
 \\var yy_buffer_initialized: bool = false;
 \\var yy_buf_pos: usize = 0;
-\\
-\\var yy_interactive: bool = 0;
 \\var yy_start: usize = 0;
 \\
 \\//yymore specific variables
@@ -22,6 +20,9 @@ pub const sectionOne = \\
 \\var yyin: ?std.fs.File = null;
 \\var yyout: ?std.fs.File = null;
 \\
+\\var yy_is_tty: bool = false;
+\\const YY_BUFSIZE: usize = 2048;
+\\
 \\var start_pos: usize = 0;
 \\var default_las: i32 = -1;
 \\
@@ -31,12 +32,43 @@ pub const sectionOne = \\
 \\    return file.readToEndAlloc(std.heap.smp_allocator, 1e9);
 \\}
 \\
-\\fn yy_read_char() i32 {
-\\    if (!yy_buffer_initialized) {
-\\        yy_buffer = readWholeFile(yyin.?) catch {
-\\            @panic("fatal: error while reading yyin");
+\\fn readLine(file: std.fs.File) ![]u8 {
+\\    var buffer: [YY_BUFSIZE]u8 = .{0} ** YY_BUFSIZE;
+\\    var it: usize = 0;
+\\    while (true): (it += 1) {
+\\        buffer[it] = file.reader().readByte() catch |e| switch (e) {
+\\            error.EndOfStream => 0x00,
+\\            else => @panic("fatal: error while reading yyin"),
 \\        };
-\\        yy_buffer_initialized = true;
+\\        if (buffer[it] == '\n' or buffer[it] == 0x00) 
+\\            return std.heap.smp_allocator.dupe(u8, buffer[0..it + 1]);
+\\    }
+\\    unreachable;
+\\}
+\\
+\\fn yy_read_char() i32 {
+\\    if (!yy_is_tty) {
+\\        if (!yy_buffer_initialized) {
+\\            yy_buffer = readWholeFile(yyin.?) catch {
+\\                @panic("fatal: error while reading yyin");
+\\            };
+\\            yy_buffer_initialized = true;
+\\        }
+\\    } else {
+\\        if (!yy_buffer_initialized) {
+\\            const buf = readLine(yyin.?) catch return EOF;
+\\            yy_buffer = buf;
+\\            yy_buffer_initialized = true;
+\\        }
+\\        if (yy_buf_pos >= yy_buffer.len) {
+\\            if (yy_buffer[yy_buffer.len - 1] == 0x00) return EOF;
+\\            const rhs = readLine(yyin.?) catch return EOF;
+\\            const old_len = yy_buffer.len;
+\\            yy_buffer = std.heap.smp_allocator.realloc(yy_buffer, yy_buffer.len + rhs.len) catch {
+\\                @panic("fatal: allocation error");
+\\            };
+\\            @memcpy(yy_buffer[old_len..], rhs[0..]);
+\\        }
 \\    }
 \\
 \\    if (yy_buf_pos == yy_buffer.len) return EOF;
@@ -75,6 +107,12 @@ pub const sectionOne = \\
 \\    yy_more_flag = true;
 \\}
 \\
+\\inline fn yyless(n: usize) void {
+\\    yy_buf_pos = yy_buf_pos - yytext.len + n;
+\\    yytext = yytext[0..n];
+\\}
+\\
+\\
 \\inline fn yy_next_state(state: usize, symbol: u8) i16 {
 \\    var s = state;
 \\    while (true) {
@@ -86,16 +124,41 @@ pub const sectionOne = \\
 \\    }
 \\}
 \\
+\\fn input() i32 {
+\\    const c = yy_read_char();
+\\    return if (c == EOF) 0x00 else c;
+\\}
+\\
+\\fn unput(c: u8) void {
+\\    yy_buffer = std.heap.smp_allocator.realloc(yy_buffer, yy_buffer.len + 1) catch {
+\\        @panic("fatal: allocation error");
+\\    };
+\\
+\\    std.mem.copyBackwards(u8, yy_buffer[yy_buf_pos + 1..], yy_buffer[yy_buf_pos..yy_buffer.len - 1]);
+\\    yy_buffer[yy_buf_pos] = c;
+\\}
+\\
+;
+
+pub const defaultYyWrap =
+\\
+\\fn yywrap() i32 {
+\\    return 1;
+\\}
+\\
+\\
 ;
 
 
 pub const sectionTwo = \\
 \\
-\\fn yylex() i32 {
+\\fn yylex() !i32 {
 \\    BEGIN(.INITIAL);
 \\
 \\    if (yyin == null) yyin = stdin;
 \\    if (yyout == null) yyout = stdout;
+\\
+\\    if (yyin.?.isTty()) yy_is_tty = true;
 \\
 \\    while (true) {
 \\        var state: i16 = @intCast(yy_start & 0xFFFF);
@@ -109,6 +172,7 @@ pub const sectionTwo = \\
 \\
 \\        start_pos = yy_buf_pos;
 \\        var cur_pos = start_pos;
+\\        var last_read_c = EOF;
 \\
 \\
 ;
@@ -116,7 +180,7 @@ pub const sectionTwo = \\
 pub const sectionThree =
 \\
 \\        while (true) {
-\\            const last_read_c = yy_read_char();
+\\            last_read_c = yy_read_char();
 \\            if (last_read_c == EOF) break;
 \\
 \\            const sym = yy_ec[@intCast(last_read_c)];
@@ -178,19 +242,32 @@ pub const sectionSix =
 \\        yytext = yy_buffer[start_pos..yy_buf_pos];
 \\
 \\        _ = yyout.?.write(yytext) catch {};
-\\        if (yy_buf_pos == yy_buffer.len) break;
+\\        if (yy_buf_pos == yy_buffer.len and last_read_c == EOF) break;
 \\    }
 \\
 \\    yy_free_buffer();
 \\    yyin.?.close();
-\\    // yywrap();
+\\    _ = yywrap();
 \\    return 0;
 \\}
 \\
+;
+
+
+
+pub const defaultMain =
+\\
 \\pub fn main() !u8 {
-\\    yyin = try std.fs.cwd().openFile("test.lang", .{});
-\\    _ = yylex();
-\\    return 1;
+\\    var argIt = std.process.args();
+\\    _ = argIt.skip();
+\\
+\\    if (argIt.next()) |filename| {
+\\        yyin = try std.fs.cwd().openFile(filename, .{});
+\\    } else {
+\\        yyin = stdin;
+\\    }
+\\    _ = try yylex();
+\\    return 0;
 \\}
 \\
 ;

@@ -20,7 +20,7 @@ pub const rejectBodySectionThree =
 \\        yy_rejected = false;
 \\
 \\        while (true) {
-\\            const last_read_c = yy_read_char();
+\\            last_read_c = yy_read_char();
 \\            if (last_read_c == EOF) break;
 \\
 \\            const sym = yy_ec[@intCast(last_read_c)];

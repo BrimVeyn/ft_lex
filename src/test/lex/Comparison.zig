@@ -20,8 +20,8 @@ var   yy_ec: [256]u8  = .{0} ** 256;
 const outputDir       = "src/test/lex/outputs/";
 const libPath         = "src/libl/libl.a";
 
-const libflPath       = "-ll";
-// const libflPath       = "/home/bvan-pae/Documents/homebrew/opt/flex/lib/libfl.a";
+// const libflPath       = "-ll";
+const libflPath       = "/home/bvan-pae/Documents/homebrew/opt/flex/lib/libfl.a";
 
 const testDirC        = "src/test/lex/examples_c/";
 const testDirZig      = "src/test/lex/examples_zig/";
@@ -121,6 +121,103 @@ fn produceFtLexOutput(alloc: std.mem.Allocator, lFile: []const u8, langFile: []c
     try std.testing.expectEqual(0, term.Exited);
 }
 
+///Runs ft_lex, compiles its output file and run it on the langFile
+///
+/// - `lFile`: path to the .l file to parse
+/// - `langFile`: path to the .lang file to lex
+fn produceFtLexOutputZig(alloc: std.mem.Allocator, lFile: []const u8, langFile: []const u8) !void {
+    G.resetGlobals();
+    DFAMinimizer.offset = 0;
+    G.options.zig = true;
+
+    var lexParser = try LexParser.init(alloc, @constCast(lFile));
+    defer lexParser.deinit();
+
+    lexParser.parse() catch return;
+
+    var regexParser = try RegexParser.init(alloc);
+    defer regexParser.deinit();
+
+    var headList = std.ArrayList(*RegexNode).init(alloc);
+    defer headList.deinit();
+
+    for (lexParser.rules.items) |rule| {
+        regexParser.loadSlice(rule.regex);
+        const head = regexParser.parse() catch |e| {
+            std.log.err("\"{s}\": {!}", .{rule.regex, e});
+            return;
+        };
+        try headList.append(head);
+    }
+
+    const ec = try EC.buildEquivalenceTable(alloc, regexParser.classSet);
+
+    var nfaBuilder = try NFAModule.NFABuilder.init(alloc, &regexParser, &ec.yy_ec);
+    defer nfaBuilder.deinit();
+
+    var nfaList = std.ArrayList(NFA).init(alloc);
+    defer nfaList.deinit();
+
+    for (headList.items) |head| {
+        const nfa = nfaBuilder.astToNfa(head) catch |e| {
+            std.log.err("NFA: {!}", .{e});
+            continue;
+        };
+        try nfaList.append(nfa);
+    }
+
+    const mergedNFAs, const bolMergedNFAs, const tcNFAs = try nfaBuilder.merge(nfaList.items, lexParser);
+    defer {
+        for (mergedNFAs.items) |m| alloc.free(m.acceptList);
+        for (bolMergedNFAs.items) |m| alloc.free(m.acceptList);
+        for (tcNFAs.items) |m| alloc.free(m.acceptList);
+        mergedNFAs.deinit(); bolMergedNFAs.deinit(); tcNFAs.deinit();
+    }
+
+    var finalDfa, var DFAs, var bol_DFAs, var tc_DFAs = 
+    try DFA.buildAndMergeFromNFAs(alloc, &lexParser, mergedNFAs, bolMergedNFAs, tcNFAs, ec);
+
+    defer {
+        for (DFAs.items) |*dfa_sc| dfa_sc.dfa.deinit();
+        for (bol_DFAs.items) |*dfa_sc| dfa_sc.dfa.deinit();
+        for (tc_DFAs.items) |*dfa_sc| dfa_sc.dfa.deinit();
+        DFAs.deinit(alloc); bol_DFAs.deinit(alloc); tc_DFAs.deinit(alloc);
+        finalDfa.mergedDeinit();
+    }
+    
+    var buffer: [512]u8 = .{0} ** 512;
+    var stream = std.io.fixedBufferStream(&buffer);
+    const sWriter = stream.writer();
+    
+    try sWriter.print("{s}ft_lex.{s}.zig", .{outputDir, std.fs.path.basename(lFile)});
+
+    var file = try std.fs.cwd().createFile(buffer[0..stream.pos], .{});
+    defer file.close();
+
+    try Printer.printTo(ec, DFAs, bol_DFAs, tc_DFAs, finalDfa, lexParser, file.writer());
+
+    var argBuffer: [2048]u8 = .{0} ** 2048;
+    var argStream = std.io.fixedBufferStream(&argBuffer);
+    const argWriter = argStream.writer();
+
+    try argWriter.print(
+        \\zig build-exe {0s} -femit-bin={2s}{1s}ftlexZig &&
+        \\{2s}{1s}ftlexZig < {3s} > {2s}{1s}ftlexZig.output
+    , .{buffer[0..stream.pos], std.fs.path.basename(lFile), outputDir, langFile});
+
+    var child = std.process.Child.init(&[_][]const u8{
+        "bash", "-c", argBuffer[0..argStream.pos],
+    }, alloc);
+
+    child.stdin_behavior = .Ignore;
+    child.stdout_behavior = .Ignore;
+    child.stderr_behavior = .Ignore;
+
+    const term = try child.spawnAndWait();
+    try std.testing.expectEqual(0, term.Exited);
+}
+
+
 ///Runs flex, compiles its output file and run it on the langFile
 ///
 /// - `lFile`: path to the .l file to parse
@@ -192,6 +289,40 @@ fn compareOutput(lFile: []const u8, langFile: []const u8) !void {
     try std.testing.expectEqual(0, term.Exited);
 }
 
+///Compares ft_lex's output to flex's output
+///
+/// - `lFile`: path to the .l input file
+/// - `langFile`: path to the file to tokenize
+///
+///Doesn't return but asserts equality
+fn compareOutputZig(lFileZig: []const u8, lFileC: []const u8, langFile: []const u8) !void {
+    const alloc = std.testing.allocator;
+    std.fs.cwd().makeDir(outputDir) catch {};
+
+    std.log.info("AVANT", .{});
+    try produceFtLexOutputZig(alloc, lFileZig, langFile);
+    std.log.info("APRES", .{});
+    try produceFlexOutput(alloc, lFileC, langFile);
+
+    var argBuffer: [1024]u8 = .{0} ** 1024;
+    var argStream = std.io.fixedBufferStream(&argBuffer);
+    const argWriter = argStream.writer();
+
+    try argWriter.print(
+        \\diff {0s}{1s}ftlexZig.output {0s}{1s}flex.output
+    , .{outputDir, std.fs.path.basename(lFileC)});
+
+    var child = std.process.Child.init(&[_][]const u8{
+        "bash", "-c", argBuffer[0..argStream.pos],
+    }, alloc);
+
+    child.stdin_behavior = .Ignore;
+    child.stdout_behavior = .Ignore;
+    child.stderr_behavior = .Ignore;
+
+    const term = try child.spawnAndWait();
+    try std.testing.expectEqual(0, term.Exited);
+}
 
 test "C like syntax" {
     try compareOutput(
@@ -333,10 +464,50 @@ test "Easy REJECT" {
     );
 }
 
-
 test "[ZIG] Easy yy_more()" {
-    try compareOutput(
+    try compareOutputZig(
         testDirZig ++ "easy_yymore.l",
+        testDirC ++ "easy_yymore.l",
         testDirC ++ "easy_yymore.lang",
+    );
+}
+
+test "[ZIG] Easy yyless()" {
+    try compareOutputZig(
+        testDirZig ++ "easy_yyless.l",
+        testDirC ++ "easy_yyless.l",
+        testDirC ++ "easy_yyless.lang",
+    );
+}
+
+test "[ZIG] Easy input() and unput()" {
+    try compareOutputZig(
+        testDirZig ++ "easy_input_unput.l",
+        testDirC ++ "easy_input_unput.l",
+        testDirC ++ "easy_input_unput.lang",
+    );
+}
+
+test "[ZIG] Hard start condition" {
+    try compareOutputZig(
+        testDirZig ++ "start_conditions_2.l",
+        testDirC ++ "start_conditions_2.l",
+        testDirC ++ "start_conditions_2.lang",
+    );
+}
+
+test "[ZIG] Easy REJECT()" {
+    try compareOutputZig(
+        testDirZig ++ "easy_REJECT.l",
+        testDirC ++ "easy_REJECT.l",
+        testDirC ++ "easy_REJECT.lang",
+    );
+}
+
+test "[ZIG] Wc" {
+    try compareOutputZig(
+        testDirZig ++ "wc.l",
+        testDirC ++ "wc.l",
+        testDirC ++ "wc.lang",
     );
 }

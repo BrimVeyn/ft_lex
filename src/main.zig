@@ -18,7 +18,7 @@ const NFAModule         = @import("regex/NFA.zig");
 const NFA               = NFAModule.NFA;
 
 const DFAModule         = @import("regex/DFA.zig");
-const DFADump           = @import("regex/DFADump.zig");
+const DFADump           = @import("regex/DFA_Dump.zig");
 const DFA               = DFAModule.DFA;
 
 const Graph             = @import("regex/Graph.zig");
@@ -96,7 +96,6 @@ pub fn main() !u8 {
         defer lexParser.deinit();
 
         lexParser.parse() catch {
-            // std.log.err("{!}", .{e});
             return 1;
         };
         var regexParser = try RegexParser.init(alloc);
@@ -132,6 +131,9 @@ pub fn main() !u8 {
                 }
                 return 1;
             };
+            const rep = try nfa.stringify(std.heap.page_allocator);
+            defer std.heap.page_allocator.free(rep);
+            std.debug.print("{s}", .{rep});
             try nfaList.append(nfa);
         }
 
@@ -167,24 +169,22 @@ pub fn main() !u8 {
         defer outFile.close();
         Graph.dotFormat(lexParser, mergedNFAs.items[0].nfa, finalDfa, &ec.yy_ec, outFile.writer());
 
-        // std.debug.print("UNCOMPRESSED\n", .{});
-        // DFADump.transTableDump(finalDfa.transTable.?);
-        std.log.info("Compressed eql: {}", .{ try finalDfa.compareTTToCTT() });
+        // std.log.info("Compressed eql: {}", .{ try finalDfa.compareTTToCTT() });
 
-        if (G.options.compressed) {
+        if (G.options.fast) {
+            const uncompressedSize = finalDfa.transTable.?.data.items.len * ec.maxEc;
+            if (uncompressedSize >= G.options.maxSizeDFA) {
+                std.log.err("Maximum output size exceeded: max: {d}, actual: {d}", .{G.options.maxSizeDFA, uncompressedSize});
+                return 1;
+            }
+            std.log.info("Uncompressed size: {d}", .{uncompressedSize});
+        } else {
             const compressedSize = (finalDfa.cTransTable.?.base.len * 2) + (finalDfa.cTransTable.?.next.len * 2);
             if (compressedSize >= G.options.maxSizeDFA) {
                 std.log.err("Maximum output size exceeded: max: {d}, actual: {d}", .{G.options.maxSizeDFA, compressedSize});
                 return 1;
             }
             std.log.info("Compressed size: {d}", .{compressedSize});
-        } else {
-            const uncompressedSize = finalDfa.transTable.?.items.len * ec.maxEc;
-            if (uncompressedSize >= G.options.maxSizeDFA) {
-                std.log.err("Maximum output size exceeded: max: {d}, actual: {d}", .{G.options.maxSizeDFA, uncompressedSize});
-                return 1;
-            }
-            std.log.info("Uncompressed size: {d}", .{uncompressedSize});
         }
 
         try Printer.print(

@@ -27,15 +27,22 @@ pub fn makeNode(self: *Parser, node: RegexNode) !*RegexNode {
 //INFO: ------------------- NUDS ---------------------
 
 pub fn makeChar(self: *Parser) ParserError!*RegexNode {
-    var range = std.StaticBitSet(256).initEmpty();
-    range.set(self.advance().Char);
+    if (G.options.fast) {
+        return makeNode(self, .{
+            .Char = self.advance().Char,
+        });
+    }
+    else {
+        var range = std.StaticBitSet(256).initEmpty();
+        range.set(self.advance().Char);
 
-    return makeNode(self, .{
-        .CharClass = .{
-            .negate = false,
-            .range = range 
-        }
-    });
+        return makeNode(self, .{
+            .CharClass = .{
+                .negate = false,
+                .range = range 
+            }
+        });
+    }
 }
 
 pub fn makeQuote(self: *Parser) ParserError!*RegexNode {
@@ -135,11 +142,17 @@ pub fn makeEscape(self: *Parser) ParserError!*RegexNode {
     self.tokenizer.changeContext(.RegexExpCommon);
     _ = self.advance();
 
-    var ec = std.StaticBitSet(256).initEmpty();
-    ec.set(char.Char);
-    const node = makeNode(self, .{ .CharClass = .{ .negate = false, .range = ec } });
-
-    return node;
+    if (G.options.fast) {
+        return makeNode(self, .{
+            .Char = char.Char,
+        });
+    } else {
+        var ec = std.StaticBitSet(256).initEmpty();
+        ec.set(char.Char);
+        return makeNode(self, .{
+            .CharClass = .{ .negate = false, .range = ec }
+        });
+    }
 }
 
 pub fn makeGroup(self: *Parser) ParserError!*RegexNode {
@@ -335,14 +348,25 @@ pub fn makeAnchorEnd(self: *Parser, left: *RegexNode) ParserError!*RegexNode {
     self.hasSeenTrailingContext = true;
     _ = self.advance();
 
-    return makeNode(self, .{
-        .TrailingContext = .{
-            .left = left,
-            .right = try makeNode(self, .{
-                .CharClass = .{ .negate = false, .range = makeBitSet(Ascii.dot) },
-            }),
-        },
-    });
+    if (G.options.fast) {
+        return makeNode(self, .{
+            .TrailingContext = .{
+                .left = left,
+                .right = try makeNode(self, .{
+                    .Char = '\n',
+                }),
+            },
+        });
+    } else {
+        return makeNode(self, .{
+            .TrailingContext = .{
+                .left = left,
+                .right = try makeNode(self, .{
+                    .CharClass = .{ .negate = false, .range = makeBitSet(Ascii.dot) },
+                }),
+            },
+        });
+    }
 }
 
 pub fn makeTrailingContext(self: *Parser, left: *RegexNode) ParserError!*RegexNode {
