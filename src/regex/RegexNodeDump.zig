@@ -36,7 +36,7 @@ pub fn dump(self: *const RegexNode, indent: usize) void {
             var buffer: [255]u8 = undefined;
             var len: usize = 0;
 
-            for (0..255) |i| {
+            for (0..std.math.maxInt(u8)) |i| {
                 const iU8: u8 = @intCast(i);
                 if (self.CharClass.range.isSet(i)) {
                     buffer[len] = if (Ascii.isGraph(iU8)) iU8 else '.';

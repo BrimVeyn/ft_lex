@@ -126,14 +126,14 @@ pub fn main() !u8 {
         for (headList.items) |head| {
             const nfa = nfaBuilder.astToNfa(head) catch |e| {
                 switch (e) {
-                    error.NFATooComplicated => std.log.err("Maximum NFA states exceeded (>= {d})", .{ G.options.maxSizeDFA }),
+                    error.NFATooComplicated => std.log.err("Maximum NFA states exceeded (>= {d})", .{ G.options.maxStates }),
                     else => {},
                 }
                 return 1;
             };
-            const rep = try nfa.stringify(std.heap.page_allocator);
-            defer std.heap.page_allocator.free(rep);
-            std.debug.print("{s}", .{rep});
+            // const rep = try nfa.stringify(std.heap.page_allocator);
+            // defer std.heap.page_allocator.free(rep);
+            // std.debug.print("{s}", .{rep});
             try nfaList.append(nfa);
         }
 

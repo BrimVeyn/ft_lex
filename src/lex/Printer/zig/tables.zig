@@ -108,15 +108,15 @@ fn printYyReject(dfa: DFA, writer: anytype) !void {
 
 
 fn printYyNext(dfa: DFA, writer: anytype) !void {
-    try writer.print("const yy_next: [{d}][{d}]i32 = .{{", .{dfa.minimized.?.data.items.len, std.math.maxInt(u8)});
+    try writer.print("const yy_next: [{d}][{d}]i16 = .{{\n", .{dfa.minimized.?.data.items.len, std.math.maxInt(u8)});
     const tt = dfa.transTable orelse return error.NoTransTable;
 
     for (tt.data.items) |s| {
 
-        try writer.print("{{", .{});
+        try writer.print(".{{ ", .{});
         for (s.items, 0..) |trans, it| {
             if (it % MAX_ITEM_PER_ROW == 0) _ = try writer.write("\n");
-            try writer.print("{d:5} ,", .{trans});
+            try printSigned(trans, writer);
         }
         try writer.print("}},\n", .{});
     }

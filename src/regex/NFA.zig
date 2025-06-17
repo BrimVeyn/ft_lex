@@ -220,9 +220,11 @@ pub const NFABuilder = struct {
                 var accept = try self.makeState(self.next_id);
 
                 if (G.options.fast) {
-                    for (0..256) |i| {
+                    for (0..std.math.maxInt(u8)) |i| {
                         const iU8: u8 = @intCast(i);
-                        if (node.CharClass.range.isSet(i)) {
+                        if ((node.CharClass.negate and !node.CharClass.range.isSet(i)) or
+                            (!node.CharClass.negate and node.CharClass.range.isSet(i))
+                        ) {
                             const inner = try self.astToNfa(try ParserMakers.makeNode(self.parser, .{.Char = iU8}));
                             try start.transitions.append(.{.symbol = .{ .epsilon = {} }, .to = inner.start });
                             try inner.accept.transitions.append(.{.symbol = .{ .epsilon = {} }, .to = accept });

@@ -17,12 +17,12 @@ pub const LexOptions = struct {
     needTcBacktracking: bool  = false,
     needYYMore: bool          = false,
     needREJECT: bool          = false,
-    maxPositions: usize       = 2500,
-    maxStates: usize          = 500,
-    maxTransitions: usize     = 2000,
-    maxParseTreeNodes: usize  = 1000,
-    maxPackedCharClass: usize = 1000,
-    maxSizeDFA: usize         = 3000,
+    maxPositions: usize       = 5000,
+    maxStates: usize          = 32000,
+    maxTransitions: usize     = 10000,
+    maxParseTreeNodes: usize  = 2000,
+    maxPackedCharClass: usize = 2000,
+    maxSizeDFA: usize         = 10000,
     yyTextType: YYTextType    = .Pointer,
 };
 

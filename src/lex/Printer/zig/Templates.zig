@@ -112,18 +112,6 @@ pub const sectionOne = \\
 \\    yytext = yytext[0..n];
 \\}
 \\
-\\
-\\inline fn yy_next_state(state: usize, symbol: u8) i16 {
-\\    var s = state;
-\\    while (true) {
-\\        if (yy_check[@intCast(yy_base[s] + symbol)] == s)
-\\            return yy_next[@intCast(yy_base[s] + symbol)];
-\\        s = if (yy_default[s] == -1) 
-\\                return -1 
-\\            else @intCast(yy_default[s]);
-\\    }
-\\}
-\\
 \\fn input() i32 {
 \\    const c = yy_read_char();
 \\    return if (c == EOF) 0x00 else c;
@@ -136,6 +124,20 @@ pub const sectionOne = \\
 \\
 \\    std.mem.copyBackwards(u8, yy_buffer[yy_buf_pos + 1..], yy_buffer[yy_buf_pos..yy_buffer.len - 1]);
 \\    yy_buffer[yy_buf_pos] = c;
+\\}
+\\
+;
+
+pub const nextStateFn =
+\\inline fn yy_next_state(state: usize, symbol: u8) i16 {
+\\    var s = state;
+\\    while (true) {
+\\        if (yy_check[@intCast(yy_base[s] + symbol)] == s)
+\\            return yy_next[@intCast(yy_base[s] + symbol)];
+\\        s = if (yy_default[s] == -1) 
+\\                return -1 
+\\            else @intCast(yy_default[s]);
+\\    }
 \\}
 \\
 ;
@@ -177,17 +179,30 @@ pub const sectionTwo = \\
 \\
 ;
 
+pub const nextLogic =
+\\            const sym = yy_ec[@intCast(last_read_c)];
+\\
+\\            const next_state = yy_next_state(@intCast(state), sym);
+\\            const bol_next_state = if (bol_state == -1) -1 
+\\                else yy_next_state(@intCast(bol_state), sym);
+;
+
+pub const nextLogicFast =
+\\            const next_state = yy_next[@intCast(state)][@intCast(last_read_c)];
+\\            const bol_next_state = if (bol_state == -1) -1 
+\\                else yy_next[@intCast(bol_state)][@intCast(last_read_c)];
+\\
+;
+
 pub const sectionThree =
 \\
 \\        while (true) {
 \\            last_read_c = yy_read_char();
 \\            if (last_read_c == EOF) break;
 \\
-\\            const sym = yy_ec[@intCast(last_read_c)];
-\\
-\\            const next_state = yy_next_state(@intCast(state), sym);
-\\            const bol_next_state = if (bol_state == -1) -1 
-\\                else yy_next_state(@intCast(bol_state), sym);
+;
+
+pub const sectionThreeP2 =
 \\
 \\            if (next_state == -1 and bol_next_state == -1) break;
 \\

@@ -28,7 +28,7 @@ pub fn stringify(self: NFA, alloc: std.mem.Allocator) ![]u8 {
         for (state.transitions.items) |transition| {
             const epsilon = "ε";
             switch (transition.symbol) {
-                .char => |s| try writer.print("n{d} -> n{d} [label=\"{c}\"]\n", .{state.id, transition.to.id, s}),
+                .char => |s| try writer.print("n{d} -> n{d} [label=\"{c}\"]\n", .{state.id, transition.to.id, if (std.ascii.isAlphanumeric(s)) s else '.'}),
                 .epsilon => try writer.print("n{d} -> n{d} [label=\"{s}\" style=dashed]\n", .{state.id, transition.to.id, epsilon}),
                 .ec => |ec| try writer.print("n{d} -> n{d} [label=\"EC:{d}\"]\n", .{state.id, transition.to.id, ec}),
             }

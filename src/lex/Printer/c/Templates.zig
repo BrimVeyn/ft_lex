@@ -170,6 +170,16 @@ pub const sectionTwo = \\
 \\
 ;
 
+
+pub const nextLogic =
+\\
+\\            int sym = yy_ec[last_read_c];
+\\
+\\            int next_state = yy_next_state(state, sym);
+\\            int bol_next_state = yy_next_state(bol_state, sym);
+\\
+;
+
 pub const sectionThree =
 \\
 \\        while (1) {

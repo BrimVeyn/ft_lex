@@ -30,7 +30,7 @@ pub fn stringify(self: DFA, alloc: std.mem.Allocator) ![]u8 {
         for (entry.value_ptr.*.transitions.items) |t| {
             const i_dest = self.data.getIndex(t.to);
             switch (t.symbol) {
-                .char => |s| try writer.print("d{?} -> d{?} [label=\"{c}\"]\n", .{i_src, i_dest, s}),
+                .char => |s| try writer.print("d{?} -> d{?} [label=\"{c}\"]\n", .{i_src, i_dest, if (std.ascii.isAlphanumeric(s)) s else '.'}),
                 .epsilon => try writer.print("d{?} -> d{?} [label=\"#\"]\n", .{i_src, i_dest}),
                 .ec => |ec| try writer.print("d{?} -> d{?} [label=\"EC:{d}\"]\n", .{i_src, i_dest, ec}),
             }
@@ -55,7 +55,7 @@ pub fn minimizedStringify(self: DFA, alloc: std.mem.Allocator) ![]u8 {
         }
         for (state.signature.?.data.items) |t| {
             switch (t.symbol) {
-                .char => |s| try writer.print("dm{?} -> dm{?} [label=\"{c}\"]\n", .{sId, t.group_id, s}),
+                .char => |s| try writer.print("dm{?} -> dm{?} [label=\"{c}\"]\n", .{sId, t.group_id, if (std.ascii.isAlphanumeric(s)) s else '.'}),
                 .ec => |ec| try writer.print("dm{?} -> dm{?} [label=\"EC:{d}\"]\n", .{sId, t.group_id, ec}),
                 else => unreachable,
             }
