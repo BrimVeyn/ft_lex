@@ -13,7 +13,16 @@ words {word}{ws}+
 
 %%
 
-[a-zA-Z]+		wc += 1; cc += yytext.len;
+{word}{ws}*		wc += 1; cc += yytext.len;
+{word}{ws}*\n		wc += 1; cc += yytext.len; lc += 1;
+{words}{word}{ws}*	wc += 2; cc += yytext.len;
+{words}{word}{ws}*\n	wc += 2; cc += yytext.len; lc += 1;
+{words}{2}{word}{ws}*	wc += 3; cc += yytext.len;
+{words}{2}{word}{ws}*\n	wc += 3; cc += yytext.len; lc += 1;
+{words}{3}{word}{ws}*	wc += 4; cc += yytext.len;
+{words}{3}{word}{ws}*\n	wc += 4; cc += yytext.len; lc += 1;
+
+{ws}+			cc += yytext.len;
 
 \n+			cc += yytext.len; lc += yytext.len;
 
