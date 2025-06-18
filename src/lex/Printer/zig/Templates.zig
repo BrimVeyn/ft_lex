@@ -87,7 +87,7 @@ pub const sectionOne = \\
 \\
 \\inline fn ECHO() void {
 \\    if (yyout) |out| {
-\\        _ = out.writer().print("{s}", .{yytext}) catch @panic("fatal: yyout write error");
+\\        _ = out.write(yytext) catch @panic("fatal: yyout write error");
 \\    } else @panic("fatal: yyout is not defined");
 \\}
 \\

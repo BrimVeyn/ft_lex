@@ -17,17 +17,16 @@ pub const rejectResetDirective =
 ;
 
 pub const rejectBodySectionThree = 
+\\
 \\        yy_rejected = false;
 \\
 \\        while (true) {
 \\            last_read_c = yy_read_char();
 \\            if (last_read_c == EOF) break;
 \\
-\\            const sym = yy_ec[@intCast(last_read_c)];
-\\
-\\            const next_state = yy_next_state(@intCast(state), sym);
-\\            const bol_next_state = if (bol_state == -1) -1 
-\\                else yy_next_state(@intCast(bol_state), sym);
+;
+
+pub const rejectBodySectionThreeP2 =
 \\
 \\            if (next_state == -1 and bol_next_state == -1) break;
 \\

@@ -29,10 +29,9 @@ pub const rejectBodySectionThree =
 \\            if (last_read_c == EOF) break;
 \\            last_read_c = (unsigned char) last_read_c;
 \\
-\\            int sym = yy_ec[last_read_c];
-\\
-\\            int next_state = yy_next_state(state, sym);
-\\            int bol_next_state = yy_next_state(bol_state, sym);
+;
+
+pub const rejectBodySectionThreeP2 =
 \\
 \\            if (next_state < 0 && bol_next_state < 0) break;
 \\

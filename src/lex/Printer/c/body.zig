@@ -25,8 +25,6 @@ pub fn printBody(lexParser: LexParser, writer: anytype) anyerror!void {
 
     _ = try writer.write(Templates.sectionTwo);
 
-    if (G.options.needREJECT)
-        _ = try writer.write(TemplatesREJECT.rejectBodySectionThree);
 
     if (G.options.needYYMore)
         _ = try writer.write(TemplatesYYMore.yyMoreSectionOne);
@@ -38,6 +36,13 @@ pub fn printBody(lexParser: LexParser, writer: anytype) anyerror!void {
         else
             _ = try writer.write(Templates.nextLogic);
         _ = try writer.write(Templates.sectionThreeP2);
+    } else {
+        _ = try writer.write(TemplatesREJECT.rejectBodySectionThree);
+        if (G.options.fast)
+            _  = try writer.write(Templates.nextLogicFast)
+        else
+            _ = try writer.write(Templates.nextLogic);
+        _ = try writer.write(TemplatesREJECT.rejectBodySectionThreeP2);
     }
 
     if (G.options.needTcBacktracking)
