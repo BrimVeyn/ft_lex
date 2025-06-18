@@ -71,10 +71,6 @@ pub fn compress(self: *DFA) !void {
     }
 
 
-    // for (candidates.items, 0..) |cs, i| { 
-    // std.log.info("c for {d} : {any}", .{i, cs.items});
-    // }
-
     for (0..transTableLen) |it| {
         const c = candidates.items[it];
         const bestMatch: ?struct {usize, i16} = blk: {
@@ -82,7 +78,6 @@ pub fn compress(self: *DFA) !void {
             for (c.items) |row| {
                 const score = iblk: {
                     var score: ?usize = null;
-                    // std.debug.print("Row: {any} with: {any}\n", .{transTable.items[it].items, row[1].*});
                     for (row[1].*, 0..) |elem, x| {
                         if (elem != -1 and transTable.items[it].items[x] == elem) {
                             score = if (score) |s| s + 1 else 1;
@@ -104,12 +99,7 @@ pub fn compress(self: *DFA) !void {
             }
         }
         default.items[it] = bestMatch.?[1];
-        // std.debug.print("BestMatch for row: {d} -> {any}\n", .{it, bestMatch});
     }
-
-    // std.debug.print("List of ommitables:\n {any}\n", .{ommitable.items});
-    // transTableDump(transTable);
-
 
     if (ommitable.items.len != 0) {
         var clone = try transTable.clone();
@@ -129,9 +119,6 @@ pub fn compress(self: *DFA) !void {
         }
     }
 
-    // std.debug.print("\n\n", .{});
-    // transTableDump(transTable);
-
     const padding = blk: {
         var count:usize = 0;
         for (transTable.items[0].items) |t| {
@@ -150,7 +137,6 @@ pub fn compress(self: *DFA) !void {
             break: blk ret;
         };
         defer allNotNull.deinit();
-        // std.debug.print("Not null of: {d} -> {any}\n", .{i, allNotNull.items});
 
         //For all rows above the current, check that all not null values have only zeroes above them
         //otherwise, increase offset by one until its true
@@ -160,12 +146,6 @@ pub fn compress(self: *DFA) !void {
 
             for (transTable.items[0..i], 0..) |aRow, indexLookup|  {
                 const aRowOffset: usize = @intCast(base.items[indexLookup]);
-                // std.debug.print("{s}Arow[{d}], Offset: {d}{s}\n", .{
-                //     Green,
-                //     indexLookup,
-                //     aRowOffset,
-                //     Reset,
-                // });
 
                 for (allNotNull.items) |rowIndex| {
                     const realIndex = rowIndex + offset;
@@ -225,10 +205,10 @@ pub fn compress(self: *DFA) !void {
         }
     }
 
-    DFADump.transTableDump(transTable);
-    std.debug.print("\n", .{});
-    DFADump.compressedTableDump(base, next, check, default);
-    std.debug.print("\n\n", .{});
+    // DFADump.transTableDump(transTable);
+    // std.debug.print("\n", .{});
+    // DFADump.compressedTableDump(base, next, check, default);
+    // std.debug.print("\n\n", .{});
 
     self.cTransTable = .{ 
         .check = try check.toOwnedSlice(),

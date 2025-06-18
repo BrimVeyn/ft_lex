@@ -68,6 +68,29 @@ pub fn print(
     if (lexParser.userSubroutines) |subroutine| {
         _ = try writer.write(subroutine);
     }
+
+    if (G.options.v) {
+        try printStatistics(lexParser, dfa);
+    }
+}
+
+fn printStatistics(lexParser: LexParser, dfa: DFA) !void {
+    std.debug.print("ft_lex usage statistics:\n", .{});
+    std.debug.print("\t{d}/{d} parse tree nodes\n", .{G.ParseTreeNodes, G.options.maxParseTreeNodes});
+    std.debug.print("\t{d}/{d} character classes\n", .{G.PackedCharClass, G.options.maxPackedCharClass});
+    std.debug.print("\t{d}/{d} NFA states\n", .{G.States, G.options.maxStates});
+    if (!G.options.fast) {
+        const compressedSize = (dfa.cTransTable.?.base.len * 2) + (dfa.cTransTable.?.next.len * 2) + dfa.yy_accept.?.len;
+        std.debug.print("\t{d} equivalence classes\n", .{dfa.yy_ec_highest});
+        std.debug.print("\t{d}/{d} total table entries\n", .{compressedSize, G.options.maxSizeDFA});
+    } else {
+        const fastSize = dfa.transTable.?.data.items.len * dfa.transTable.?.data.items[0].items.len;
+        std.debug.print("\t{d}/{d} total table entries needed\n", .{fastSize, G.options.maxSizeDFA});
+    }
+    std.debug.print("\t{d} DFA states\n", .{G.DFAStates});
+    std.debug.print("\t{d} minDFA states\n", .{dfa.minimized.?.data.items.len});
+    std.debug.print("\t{d} rules\n", .{lexParser.rules.items.len});
+    std.debug.print("\t{d} start condition(s)\n", .{lexParser.definitions.startConditions.data.items.len});
 }
 
 ///This function is similar to the previous declaration, however its only used

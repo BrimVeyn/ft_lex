@@ -14,7 +14,7 @@ const Ascii             = @import("Ascii.zig");
 const G                 = @import("../globals.zig");
 
 pub fn makeNode(self: *Parser, node: RegexNode) !*RegexNode {
-    G.incrementParseTreeNodes();
+    G.ParseTreeNodes += 1;
     const ret = try self.pool.create();
 
     if (std.meta.activeTag(node) == .CharClass)

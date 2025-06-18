@@ -30,20 +30,22 @@ rules: std.ArrayListUnmanaged(Rule),
 userSubroutines: ?[]u8 = null,
 tokenizer: LexTokenizer,
 alloc: std.mem.Allocator,
+tty: bool = false,
 
-pub fn init(alloc: std.mem.Allocator, fileName: []u8) !LexParser {
-    var file = std.fs.cwd().openFile(fileName, .{}) catch |e| {
-        std.log.err("ft_lex: Failed to open: {s}, reason: {!}", .{fileName, e});
-        return e;
-    };
-    defer file.close();
-    const rawContent = file.readToEndAlloc(alloc, 1e8) catch |e| {
-        std.log.err("ft_lex: Failed to read: {s}, reason: {!}", .{fileName, e});
-        return e;
-    };
+pub fn init(alloc: std.mem.Allocator, fileName: ?[]u8) !LexParser {
+    var file: std.fs.File = undefined;
+
+    if (fileName) |name| {
+        file = std.fs.cwd().openFile(name, .{}) catch |e| {
+            std.log.err("ft_lex: Failed to open: {s}, reason: {!}", .{name, e});
+            return e;
+        };
+    } else {
+        file = std.io.getStdIn();
+    }
 
     return .{
-        .tokenizer = LexTokenizer.init(alloc, rawContent, fileName),
+        .tokenizer = LexTokenizer.init(alloc, fileName, file),
         .alloc = alloc,
         .rules = try std.ArrayListUnmanaged(Rule).initCapacity(alloc, 10),
         .definitions = try Definitions.init(alloc),

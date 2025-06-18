@@ -84,19 +84,64 @@ pub const LexTokenizer = struct {
     };
 
     alloc: std.mem.Allocator,
-    nextFn: *const fn (*LexTokenizer) LexTokenizerError!LexToken,
+    file: std.fs.File,
     fileName: ?[]u8 = null,
     input: []u8,
+    nextFn: *const fn (*LexTokenizer) LexTokenizerError!LexToken,
+    eofReached: bool = false,
+    inputInitialized: bool = false,
     pos: struct {
         line: usize = 1,
         col: usize = 0,
         absolute: usize = 0,
     } = .{},
 
-    pub fn init(alloc: std.mem.Allocator, input: []u8, fileName: ?[]u8) LexTokenizer {
+    const BUFSIZE = 2048;
+
+    fn readWholeFile(self: *LexTokenizer) ![]u8 {
+        self.eofReached = true;
+        self.inputInitialized = true;
+        return self.file.readToEndAlloc(self.alloc, 10e9);
+    }
+
+    fn readLine(self: *LexTokenizer) ![]u8 {
+        var buffer: [BUFSIZE]u8 = .{0} ** BUFSIZE;
+        var it: usize = 0;
+        while (true): (it += 1) {
+            buffer[it] = self.file.reader().readByte() catch |e| switch (e) {
+                error.EndOfStream => { self.eofReached = true; return e; },
+                else => return e,
+            };
+            if (buffer[it] == '\n' or buffer[it] == 0x00) 
+            return self.alloc.dupe(u8, buffer[0..it + 1]);
+        }
+        unreachable;
+    }
+
+    pub fn readMore(self: *LexTokenizer) !void {
+        if (self.eofReached) return;
+
+        if (self.file.isTty()) {
+            if (!self.inputInitialized) {
+                self.input = try self.readLine();
+                self.inputInitialized = true;
+                return;
+            }
+            const rhs = try self.readLine();
+            const old_len = self.input.len;
+            self.input = try self.alloc.realloc(self.input, self.input.len + rhs.len);
+            @memcpy(self.input[old_len..], rhs[0..]);
+            self.alloc.free(rhs);
+        } else {
+            self.input = try readWholeFile(self);
+        }
+    }
+
+    pub fn init(alloc: std.mem.Allocator, fileName: ?[]u8, file: std.fs.File) LexTokenizer {
         return .{
+            .file = file,
             .alloc = alloc,
-            .input = input,
+            .input = undefined,
             .fileName = fileName,
             .nextFn = &nextDefinitions,
         };
@@ -121,16 +166,22 @@ pub const LexTokenizer = struct {
         return self.nextFn(self);
     }
 
+    fn ensureSteamIsReady(self: *LexTokenizer) void {
+        if (!self.inputInitialized or self.pos.absolute >= self.input.len) {
+            self.readMore() catch {};
+        }
+    }
+
     fn getC(self: *LexTokenizer) ?u8 {
+        self.ensureSteamIsReady();
+
         const c: u8 =
             if (self.pos.absolute < self.input.len) self.input[self.pos.absolute] 
             else return null;
 
         self.pos.absolute += 1;
-        // std.log.info("char: {c}", .{c});
         switch (c) {
             '\n' => {
-                // std.log.info("NEWLINE", .{});
                 self.pos.line += 1;
                 self.pos.col = 0;
             },
@@ -144,13 +195,15 @@ pub const LexTokenizer = struct {
         return self.getC();
     }
 
-    fn peekC(self: LexTokenizer) ?u8 {
+    fn peekC(self: *LexTokenizer) ?u8 {
+        self.ensureSteamIsReady();
         return 
         if (self.pos.absolute < self.input.len) self.input[self.pos.absolute] 
             else null;
     }
 
-    fn peekN(self: LexTokenizer, n: usize) ?u8 {
+    fn peekN(self: *LexTokenizer, n: usize) ?u8 {
+        self.ensureSteamIsReady();
         return 
         if (self.pos.absolute + n - 1 < self.input.len) self.input[self.pos.absolute + n - 1]
             else null;
@@ -284,7 +337,7 @@ pub const LexTokenizer = struct {
         };
     }
 
-    fn logError(self: LexTokenizer, err: LexTokenizerError) LexTokenizerError {
+    fn logError(self: *LexTokenizer, err: LexTokenizerError) LexTokenizerError {
         switch (err) {
             error.UnrecognizedPercentDirective => std.log.err("{s}:{d}: unrecognized '%' directive", .{self.getFileName(), self.getLineNo()}),
             error.BadCharacter => std.log.err("{s}:{d}: bad character: {c}", .{self.getFileName(), self.getLineNo(), self.peekC() orelse '.'}),
@@ -402,8 +455,6 @@ pub const LexTokenizer = struct {
 
         _ = self.eatTillNewLine();
         self.eatWhitespacesAndNewline();
-
-        // std.log.info("Detected param with id: {c} and number: {d}", .{id, number});
 
         switch (id) {
             'p' => G.options.maxPositions = number,
@@ -550,6 +601,15 @@ pub const LexTokenizer = struct {
     }
 
     pub fn nextUserSubroutines(self: *LexTokenizer) LexTokenizerError!LexToken {
+        while (!self.eofReached) {
+            self.readMore() catch |e| {
+                switch (e) {
+                    error.EndOfStream => {},
+                    else => return error.UnexpectedEOF,
+                }
+            };
+        }
+
         if (self.pos.absolute == self.input.len) return LexToken{.EOF = {}};
         return LexToken {
             .userSuboutines = self.input[self.pos.absolute..],

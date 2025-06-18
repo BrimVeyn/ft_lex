@@ -149,6 +149,7 @@ pub const NFABuilder = struct {
         self.depth = 0;
         var nfa = try self.astToNfaRec(node);
         nfa.parseTree = node;
+        G.States = self.next_id;
         return nfa;
     }
 

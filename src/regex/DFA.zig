@@ -276,24 +276,18 @@ pub const DFA = struct {
             .accept_id = accept_id,
             .accept_list = accept_list,
         });
-        // self.epsilon_cache = std.AutoHashMap(StateSet, StateSet).init(self.alloc);
-        // defer self.epsilon_cache.deinit();
 
         while (queue.pop()) |current_set| {
+
             for (0..256) |s| {
                 const symbol: u8 = @intCast(s);
                 var gotos = try self.move(current_set, symbol);
                 defer gotos.deinit();
 
-                // const symbol_graph = if (std.ascii.isPrint(symbol)) symbol else '.';
-                // std.debug.print("symbol: {c}|{d} found: ", .{symbol_graph, symbol});
-                // try printStateSet(gotos);
-
                 if (gotos.count() == 0) 
                     continue;
 
                 var closure = try self.epsilon_closure(gotos);
-                // try printStateSet(closure);
 
                 if (!self.data.contains(closure)) {
                     const inner_accept_id, const inner_accept_list = try self.getAcceptingRule(closure);
@@ -327,9 +321,6 @@ pub const DFA = struct {
 
                 var closure = try self.epsilon_closure(gotos);
 
-                // const closure = self.epsilon_cache.get(gotos) orelse try self.epsilon_closure(gotos);
-                // try self.epsilon_cache.put(gotos, closure);
-
                 if (!self.data.contains(closure)) {
                     const inner_accept_id, const inner_accept_list = try self.getAcceptingRule(closure);
                     try self.data.put(closure, .{
@@ -353,6 +344,7 @@ pub const DFA = struct {
                 }
             }
         }
+        G.DFAStates += self.data.count();
     }
 
     //TODO: remove this strcucture and store sc, and tc fields in DFA

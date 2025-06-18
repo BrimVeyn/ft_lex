@@ -10,6 +10,7 @@ pub const LexOptions = struct {
     t: bool                   = false,
     n: bool                   = false,
     v: bool                   = false,
+    graph: bool               = false,
     fast: bool                = false,
     zig: bool                 = false,
     mainDefined: bool         = false,
@@ -18,11 +19,11 @@ pub const LexOptions = struct {
     needYYMore: bool          = false,
     needREJECT: bool          = false,
     maxPositions: usize       = 5000,
-    maxStates: usize          = 32000,
-    maxTransitions: usize     = 10000,
+    maxStates: usize          = 2000,
+    maxTransitions: usize     = 2000,
     maxParseTreeNodes: usize  = 2000,
-    maxPackedCharClass: usize = 2000,
-    maxSizeDFA: usize         = 10000,
+    maxPackedCharClass: usize = 300,
+    maxSizeDFA: usize         = 5000,
     yyTextType: YYTextType    = .Pointer,
 };
 
@@ -33,8 +34,7 @@ pub var PackedCharClass: usize = 0;
 pub var States: usize          = 0;
 pub var Positions: usize       = 0;
 pub var Transitions: usize     = 0;
-pub var DFASize: usize         = 0;
-
+pub var DFAStates: usize       = 0;
 
 pub fn resetGlobals() void {
     options         = .{};
@@ -43,7 +43,6 @@ pub fn resetGlobals() void {
     States          = 0;
     Positions       = 0;
     Transitions     = 0;
-    DFASize         = 0;
 }
 
 pub fn incrementParseTreeNodes() void {
