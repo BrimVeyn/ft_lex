@@ -23,7 +23,7 @@ pub const sectionOne = \\
 \\extern int yy_more_flag;
 \\extern int yy_more_len;
 \\extern int yy_hold_char_restored;
-\\extern char *yy_buffer;
+\\extern signed char *yy_buffer;
 \\extern size_t yy_buf_len;
 \\
 \\static size_t yy_buf_size = 0;    // total allocated size
@@ -31,7 +31,7 @@ pub const sectionOne = \\
 \\static int yy_start;
 \\
 \\//Global initialization
-\\char *yy_buffer = NULL;
+\\signed char *yy_buffer = NULL;
 \\size_t yy_buf_len = 0;     // number of bytes currently filled
 \\size_t yy_buf_pos = 0;     // current read position
 \\int yy_hold_char_restored = 0; //used when calling input and unput in the same action
@@ -56,7 +56,7 @@ pub const sectionOne = \\
 \\    while (new_size < min_required)
 \\        new_size *= 2;
 \\
-\\    char *new_buffer = realloc(yy_buffer, new_size);
+\\    signed char *new_buffer = realloc(yy_buffer, new_size);
 \\    if (!new_buffer) {
 \\        fprintf(stderr, "Out of memory while reallocating buffer\n");
 \\        exit(1);
@@ -84,7 +84,7 @@ pub const sectionOne = \\
 \\int yy_read_char(void) {
 \\    if (yy_buf_pos >= yy_buf_len) {
 \\        if (yy_interactive) {
-\\            char c = '*';
+\\            signed char c = '*';
 \\            for ( int n = 0; n < yy_buf_size && (c = getc( yyin )) != EOF && c != '\n'; ++n ) {
 \\                buffer_join_c(c);
 \\            }
@@ -133,8 +133,7 @@ pub const sectionOne = \\
 \\
 ;
 
-
-pub const sectionTwo = \\
+pub const nextStateFn =
 \\static inline int yy_next_state(int s, int ec) {
 \\    while (s != -1) {
 \\        if (yy_check[yy_base[s] + ec] == s)
@@ -143,6 +142,10 @@ pub const sectionTwo = \\
 \\    }
 \\    return s;
 \\}
+\\
+;
+
+pub const sectionTwo = \\
 \\
 \\// --- Core DFA scanning function ---
 \\int yylex(void) {
@@ -180,21 +183,24 @@ pub const nextLogic =
 \\
 ;
 
+pub const nextLogicFast =
+\\
+\\           int next_state = (state == -1) ? -1 : yy_next[state][last_read_c];
+\\           int bol_next_state = (bol_state == -1) ? -1 : yy_next[bol_state][last_read_c];
+\\
+;
+
 pub const sectionThree =
 \\
 \\        while (1) {
 \\            last_read_c = yy_read_char();
-\\            /*printf("Read: %d %d at pos: %d\n", last_read_c, last_read_c, yy_buf_pos);*/
 \\
 \\            if (last_read_c == EOF) break;
 \\            last_read_c = (unsigned char) last_read_c;
 \\
-\\            int sym = yy_ec[last_read_c];
-\\
-\\            int next_state = yy_next_state(state, sym);
-\\            int bol_next_state = yy_next_state(bol_state, sym);
-\\
-\\            // printf("bol_next_state: %d, next_state: %d\n", bol_next_state, next_state);
+;
+
+pub const sectionThreeP2 = 
 \\
 \\            if (next_state < 0 && bol_next_state < 0) break;
 \\
@@ -205,13 +211,11 @@ pub const sectionThree =
 \\            if (bol_state != -1 && yy_accept[bol_state] > 0) {
 \\                bol_las = bol_state;
 \\                bol_lap = cur_pos;
-\\                /*printf("Match bol with: %d %d\n", default_las, default_lap);*/
 \\            }
 \\
 \\            if (state != -1 && yy_accept[state] > 0) {
 \\                default_las = state;
 \\                default_lap = cur_pos;
-\\                /*printf("Match normal with: %d %d\n", default_las, default_lap);*/
 \\            }
 \\        }
 \\
@@ -226,7 +230,6 @@ pub const sectionThree =
 \\        }
 \\
 \\
-\\        /*printf("buf_pos: %d, default_lap: %d, default_las: %d\n", yy_buf_pos, default_lap, default_las);*/
 \\        if (default_las > 0) {
 \\            // Backtrack
 \\            yy_buf_pos = default_lap;
@@ -238,7 +241,7 @@ pub const sectionThree =
 
 pub const sectionFour = 
 \\
-\\            yytext = &yy_buffer[start_pos];
+\\            yytext = (char *) &yy_buffer[start_pos];
 \\            yyleng = default_lap - start_pos;
 \\            YY_DO_BEFORE_ACTION
 \\
@@ -258,7 +261,7 @@ pub const sectionFive =
 
 pub const sectionSix =
 \\        yyleng = (int) (yy_buf_pos - start_pos);
-\\        yytext = &yy_buffer[start_pos];
+\\        yytext = (char *) &yy_buffer[start_pos];
 \\
 \\        //ECHO
 \\        fwrite(yytext, yyleng, 1, yyout);
@@ -273,3 +276,8 @@ pub const sectionSix =
 \\}
 \\
 ;
+
+
+//FIX: Why isn't this right ? chars aren't signed on some systems
+//convert yy_buffer into signed char* or int8_t cuz libc sucks
+//if (yy_buf_pos >= yy_buf_len && last_read_c == EOF) break;

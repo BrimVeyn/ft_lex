@@ -11,6 +11,9 @@ const Actions         = @import("actions.zig");
 pub fn printBody(lexParser: LexParser, writer: anytype) anyerror!void {
     _ = try writer.write(Templates.sectionOne);
 
+    if (!G.options.fast)
+        _ = try writer.write(Templates.nextStateFn);
+
     if (!G.options.needYYMore)
         _ = try writer.write(TemplatesYYMore.noYYmoreFallback);
 
@@ -28,8 +31,14 @@ pub fn printBody(lexParser: LexParser, writer: anytype) anyerror!void {
     if (G.options.needYYMore)
         _ = try writer.write(TemplatesYYMore.yyMoreSectionOne);
 
-    if (!G.options.needREJECT)
+    if (!G.options.needREJECT) {
         _ = try writer.write(Templates.sectionThree);
+        if (G.options.fast)
+            _  = try writer.write(Templates.nextLogicFast)
+        else
+            _ = try writer.write(Templates.nextLogic);
+        _ = try writer.write(Templates.sectionThreeP2);
+    }
 
     if (G.options.needTcBacktracking)
         _ = try writer.write(TemplatesYYMore.tcBacktracking);

@@ -133,7 +133,8 @@ pub fn printTables(dfa: DFA, tc_dfas: ArrayListUnmanaged(DFA.DFA_SC), lexParser:
         \\
     );
 
-    if (G.options.needTcBacktracking) try printYyAcclist(dfa, tc_dfas, lexParser, writer);
+    if (G.options.needTcBacktracking)
+        try printYyAcclist(dfa, tc_dfas, lexParser, writer);
 
     if (G.options.needREJECT) {
         try printYyReject(dfa, writer);

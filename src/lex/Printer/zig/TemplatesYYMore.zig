@@ -48,8 +48,6 @@ pub const yyMoreSectionTwo =
 \\                yy_more_len = 0;
 \\            }
 \\
-\\            YY_DO_BEFORE_ACTION();
-\\
 ;
 
 pub const yyMoreBodySectionFive = 

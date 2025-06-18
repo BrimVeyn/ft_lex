@@ -106,8 +106,8 @@ pub const NFA = struct {
 };
 
 pub const NFABuilder = struct {
-    state_list: std.ArrayListUnmanaged(*State),
     alloc     : std.mem.Allocator,
+    state_list: std.ArrayListUnmanaged(*State),
     tc_pool   : std.heap.MemoryPool(NFA),
     next_id   : StateId = 1,
     depth     : usize = 0,

@@ -85,6 +85,22 @@ fn printYyAcceptExtended(dfa: DFA, writer: anytype) !void {
     _ = try writer.write("\n};\n\n");
 }
 
+fn printYyNext(dfa: DFA, writer: anytype) !void {
+    try writer.print("static const int16_t yy_next[{d}][{d}] = {{\n", .{dfa.minimized.?.data.items.len, std.math.maxInt(u8)});
+    const tt = dfa.transTable orelse return error.NoTransTable;
+
+    for (tt.data.items) |s| {
+
+        try writer.print("{{ ", .{});
+        for (s.items, 0..) |trans, it| {
+            if (it % MAX_ITEM_PER_ROW == 0) _ = try writer.write("\n");
+            try writer.print("{d:5}, ", .{trans});
+        }
+        try writer.print("}},\n", .{});
+    }
+    _ = try writer.write("\n};\n\n");
+}
+
 pub fn printTables(dfa: DFA, tc_dfas: ArrayListUnmanaged(DFA.DFA_SC), lexParser: LexParser, ec: EC, writer: anytype) !void {
     _ = try writer.write("#include <stdint.h>\n");
     _ = try writer.write("#include <stdio.h>\n");
@@ -93,18 +109,21 @@ pub fn printTables(dfa: DFA, tc_dfas: ArrayListUnmanaged(DFA.DFA_SC), lexParser:
     if (G.options.needTcBacktracking)
         try printYyAcclist(dfa, tc_dfas, lexParser, writer);
 
-    if (G.options.needREJECT)
-        try printYyReject(dfa, writer);
-
     if (G.options.needREJECT) {
+        try printYyReject(dfa, writer);
         try printYyAcceptExtended(dfa, writer);
+    } else try printTable(i32, writer, dfa.yy_accept.?, "accept", "32", "");
+
+
+    if (G.options.fast) {
+        try printYyNext(dfa, writer);
     } else {
-        try printTable(i32, writer, dfa.yy_accept.?, "accept", "32", "");
+        try printTable(u8, writer, @constCast((ec.yy_ec)[0..]), "ec", "8", "u");
+        try printTable(i16, writer, dfa.cTransTable.?.base, "base", "16", "");
+        try printTable(i16, writer, dfa.cTransTable.?.default, "default", "16", "");
+        try printTable(i16, writer, dfa.cTransTable.?.next, "next", "16", "");
+        try printTable(i16, writer, dfa.cTransTable.?.check, "check", "16", "");
     }
 
-    try printTable(u8, writer, @constCast((ec.yy_ec)[0..]), "ec", "8", "u");
-    try printTable(i16, writer, dfa.cTransTable.?.base, "base", "16", "");
-    try printTable(i16, writer, dfa.cTransTable.?.default, "default", "16", "");
-    try printTable(i16, writer, dfa.cTransTable.?.next, "next", "16", "");
-    try printTable(i16, writer, dfa.cTransTable.?.check, "check", "16", "");
+
 }

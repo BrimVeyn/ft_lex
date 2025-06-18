@@ -53,10 +53,10 @@ pub const yyMoreSectionTwo =
 \\
 \\            if (yy_more_len != 0) {
 \\                /*printf("Start pos: %d, yyleng: %d\n", start_pos, yyleng);*/
-\\                yytext = &yy_buffer[start_pos - yyleng];
+\\                yytext = (char *) &yy_buffer[start_pos - yyleng];
 \\                yyleng += (default_lap - start_pos);
 \\            } else {
-\\                yytext = &yy_buffer[start_pos];
+\\                yytext = (char *) &yy_buffer[start_pos];
 \\                yyleng = default_lap - start_pos;
 \\                yy_more_len = 0;
 \\            }
@@ -84,7 +84,7 @@ pub const yyMoreBodySectionSix =
 \\        } else {
 \\            yyleng = (int) (yy_buf_pos - start_pos);
 \\        }
-\\        yytext = &yy_buffer[start_pos - yy_more_len];
+\\        yytext = (char *) &yy_buffer[start_pos - yy_more_len];
 \\        yy_more_len = 0;
 \\
 \\        //ECHO

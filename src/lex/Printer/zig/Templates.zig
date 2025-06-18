@@ -99,8 +99,6 @@ pub const sectionOne = \\
 \\    return @as(i16, @intCast(yy_start >> @as(u6, 16)));
 \\}
 \\
-\\inline fn YY_DO_BEFORE_ACTION() void {
-\\}
 \\
 \\inline fn yymore() void {
 \\    yy_more_len = yytext.len;
@@ -241,7 +239,6 @@ pub const sectionThreeP2 =
 pub const sectionFour = 
 \\
 \\            yytext = yy_buffer[start_pos..yy_buf_pos];
-\\            YY_DO_BEFORE_ACTION();
 \\
 \\
 ;

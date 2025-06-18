@@ -59,11 +59,11 @@ pub fn printActions(lParser: LexParser, writer: anytype) !void {
             }
         }
 
-        _ = try writer.write(rule.code.code);
-
         //Do not insert break statement if the action is fallthrough
-        if (!mem.eql(u8, "|", rule.code.code))
+        if (!mem.eql(u8, "|", rule.code.code)) {
+            _ = try writer.write(rule.code.code);
             _ = try writer.write(ruleTail);
+        }
 
         _ = try writer.write("\n}");
     }
