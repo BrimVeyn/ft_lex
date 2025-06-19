@@ -45,8 +45,11 @@ pub fn printBody(lexParser: LexParser, writer: anytype) anyerror!void {
         _ = try writer.write(TemplatesREJECT.rejectBodySectionThreeP2);
     }
 
-    if (G.options.needTcBacktracking)
+    if (G.options.needTcBacktracking and !G.options.fast) {
         _ = try writer.write(TemplatesYYMore.tcBacktracking);
+    } else if (G.options.needTcBacktracking) {
+        _ = try writer.write(TemplatesYYMore.tcBacktrackingFast);
+    }
 
     if (!G.options.needYYMore) {
         _ = try writer.write(Templates.sectionFour);

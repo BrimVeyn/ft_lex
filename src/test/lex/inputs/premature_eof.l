@@ -1,5 +1,6 @@
 %%
 
-abc ECHO();
 
-.
+abc+/def+ printf("Salut !\n");
+
+

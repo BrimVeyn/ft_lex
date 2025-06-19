@@ -37,6 +37,38 @@ pub const tcBacktracking =
 \\
 ;
 
+
+pub const tcBacktrackingFast = 
+\\
+\\            if (yy_acclist[accept_id] != 0) {
+\\                yy_buf_pos = start_pos;
+\\
+\\                var tc_state: i16 = yy_acclist[accept_id];
+\\                var tc_cur_pos: usize = start_pos;
+\\
+\\                var tc_lap: usize = 0;
+\\                var tc_last_c: i32 = -1;
+\\
+\\                while (true) {
+\\                    tc_last_c = yy_read_char();
+\\                    if (tc_last_c == EOF) break;
+\\
+\\                    const next_state = yy_next[@intCast(tc_state)][@intCast(tc_last_c)];
+\\
+\\                    if (next_state < 0) break;
+\\
+\\                    tc_state = next_state;
+\\                    tc_cur_pos = yy_buf_pos;
+\\
+\\                    if (yy_accept[@intCast(tc_state)] > 0)
+\\                        tc_lap = tc_cur_pos;
+\\                }
+\\                yy_buf_pos = tc_lap;
+\\            }
+\\
+;
+
+
 //Actions
 
 pub const yyMoreSectionTwo =

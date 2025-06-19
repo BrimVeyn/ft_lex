@@ -56,7 +56,7 @@ pub const sectionOne = \\
 \\    while (new_size < min_required)
 \\        new_size *= 2;
 \\
-\\    signed char *new_buffer = realloc(yy_buffer, new_size);
+\\    signed char *new_buffer = (signed char *) realloc(yy_buffer, new_size);
 \\    if (!new_buffer) {
 \\        fprintf(stderr, "Out of memory while reallocating buffer\n");
 \\        exit(1);

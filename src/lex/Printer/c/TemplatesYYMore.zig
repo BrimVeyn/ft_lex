@@ -46,6 +46,41 @@ pub const tcBacktracking =
 \\            }
 ;
 
+pub const tcBacktrackingFast = 
+\\
+\\            if (yy_acclist[accept_id] != 0) {
+\\                yy_buf_pos = start_pos;
+\\
+\\                // printf("Started backtraking\n");
+\\                int tc_state = yy_acclist[accept_id];
+\\                int tc_las = -1;
+\\                int tc_lap = -1;
+\\
+\\                int tc_cur_pos = start_pos;
+\\                int last_read_c = -1;
+\\
+\\                while (1) {
+\\                    last_read_c = yy_read_char();
+\\                    if (last_read_c == EOF) break;
+\\
+\\                    last_read_c = (unsigned char) last_read_c;
+\\
+\\                    int next_state = yy_next[tc_state][last_read_c];
+\\                    if (next_state < 0) break;
+\\
+\\                    tc_state = next_state;
+\\                    tc_cur_pos = yy_buf_pos;
+\\
+\\                    if (yy_accept[tc_state] > 0) {
+\\                        tc_las = tc_state;
+\\                        tc_lap = tc_cur_pos;
+\\                    }
+\\                }
+\\                yy_buf_pos = tc_lap;
+\\                default_lap = tc_lap;
+\\            }
+;
+
 //Actions
 
 

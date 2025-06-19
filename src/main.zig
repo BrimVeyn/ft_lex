@@ -106,7 +106,7 @@ fn emitGraphs(
     finalDfa: DFA,
     ec: EC
 ) !void {
-    try std.fs.cwd().makeDir("graphs");
+    std.fs.cwd().makeDir("graphs") catch {};
 
     for (DFAs.items, mergedNFAs.items, 0..) |dfa, nfa, i| {
         const filename = try std.fmt.allocPrint(alloc, "graphs/test_{d}.graph", .{i});
