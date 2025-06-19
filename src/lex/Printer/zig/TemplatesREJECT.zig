@@ -3,10 +3,11 @@ pub const noRejectFallback =
 ;
 
 pub const rejectDefinition =
-\\inline fn REJECT() void {
+\\fn REJECT() void {
 \\    yy_rejected = true;
 \\    yy_buf_pos = start_pos;
 \\    yy_reject[@intCast(default_las)] += 1;
+\\    _ = yylex() catch {};
 \\}
 \\
 ;

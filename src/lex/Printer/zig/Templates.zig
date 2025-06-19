@@ -153,7 +153,7 @@ pub const defaultYyWrap =
 pub const sectionTwo = \\
 \\
 \\fn yylex() !i32 {
-\\    BEGIN(.INITIAL);
+\\    if (yy_buf_pos == 0) BEGIN(.INITIAL);
 \\
 \\    if (yyin == null) yyin = stdin;
 \\    if (yyout == null) yyout = stdout;

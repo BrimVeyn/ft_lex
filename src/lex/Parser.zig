@@ -163,8 +163,10 @@ fn expandRule(self: *LexParser, sSub: usize, eSub: usize, regex: *[]u8) !struct 
     };
 
     var newIt: usize = 0;
+    newIt += writer.write("(") catch return error.TooLongAName;
     newIt += writer.write(regex.*[0..sSub]) catch return error.TooLongAName;
     newIt += writer.write(substitute) catch return error.TooLongAName;
+    _ = writer.write(")") catch return error.TooLongAName;
     _ = writer.write(regex.*[eSub + 1..]) catch return error.TooLongAName;
 
     return .{
