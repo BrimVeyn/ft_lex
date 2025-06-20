@@ -163,10 +163,8 @@ fn expandRule(self: *LexParser, sSub: usize, eSub: usize, regex: *[]u8) !struct 
     };
 
     var newIt: usize = 0;
-    newIt += writer.write("(") catch return error.TooLongAName;
     newIt += writer.write(regex.*[0..sSub]) catch return error.TooLongAName;
     newIt += writer.write(substitute) catch return error.TooLongAName;
-    _ = writer.write(")") catch return error.TooLongAName;
     _ = writer.write(regex.*[eSub + 1..]) catch return error.TooLongAName;
 
     return .{
@@ -233,7 +231,7 @@ fn parseDefinitions(self: *LexParser) !void {
             .definition => |def| try self.definitions.definitions.append(
                 self.alloc, .{
                     .name = def.name,
-                    .substitute = try self.alloc.dupe(u8, def.substitute) 
+                    .substitute = def.substitute, 
             }),
             .startCondition => |start| { 
                 defer start.name.deinit();

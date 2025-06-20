@@ -12,6 +12,7 @@ pub const rejectDefinition =
 \\    yy_rejected = 1; \
 \\    yy_buf_pos = start_pos; \
 \\    yy_reject[default_las] += 1; \
+\\    goto find_rule; \
 \\} while(0);
 \\
 ;

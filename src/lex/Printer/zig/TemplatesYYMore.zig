@@ -101,7 +101,6 @@ pub const yyMoreBodySectionSix =
 \\    }
 \\
 \\    yy_free_buffer();
-\\    yyin.?.close();
 \\    _ = yywrap();
 \\    return 0;
 \\}

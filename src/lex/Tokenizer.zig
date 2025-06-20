@@ -9,7 +9,6 @@ const Definitions       = DefinitionModule.Definitions;
 const RulesModule       = @import("Rules.zig");
 const Rule              = RulesModule.Rule;
 
-
 pub const LexTokenizer = struct {
 
     pub const SCKind = enum {
@@ -307,10 +306,14 @@ pub const LexTokenizer = struct {
         const substitute = try self.getDefSubstitute();
         self.eatWhitespacesAndNewline();
 
+        var groupedSubstitute = mem.trim(u8, substitute, &std.ascii.whitespace);
+        groupedSubstitute = try mem.join(self.alloc, "", &[_][]const u8{ "(", groupedSubstitute, ")" });
+
+
         return LexToken {
             .definition = .{
                 .name = name,
-                .substitute = @constCast(std.mem.trim(u8, substitute, &std.ascii.whitespace)),
+                .substitute = @constCast(groupedSubstitute),
             },
         };
     }
@@ -322,6 +325,8 @@ pub const LexTokenizer = struct {
             if (c == '\n') break;
 
             if (mem.startsWith(u8, self.input[self.pos.absolute..], "yymore"))
+                G.options.needYYMore = true;
+            if (mem.startsWith(u8, self.input[self.pos.absolute..], "REJECT"))
                 G.options.needYYMore = true;
 
             _ = self.getC();

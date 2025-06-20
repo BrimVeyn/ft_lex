@@ -234,7 +234,7 @@ fn produceFlexOutput(alloc: std.mem.Allocator, lFile: []const u8, langFile: []co
     const argWriter = argStream.writer();
 
     try argWriter.print(
-        \\flex -o {0s} -i {1s} &&
+        \\flex <{1s} -o {0s} &&
         \\clang {0s} -o {3s}{2s}flex {5s} &&
         \\{3s}{2s}flex > {3s}{2s}flex.output < {4s}
     , .{buffer[0..stream.pos], lFile, std.fs.path.basename(lFile), outputDir, langFile, libflPath});
@@ -464,6 +464,13 @@ test "Easy REJECT" {
     );
 }
 
+test "Hardcore" {
+    try compareOutput(
+        testDirC ++ "hardcore.l",
+        testDirC ++ "hardcore.lang"
+    );
+}
+
 test "[ZIG] Easy yy_more()" {
     try compareOutputZig(
         testDirZig ++ "easy_yymore.l",
@@ -509,5 +516,13 @@ test "[ZIG] Wc" {
         testDirZig ++ "wc.l",
         testDirC ++ "wc.l",
         testDirC ++ "wc.lang",
+    );
+}
+
+test "[ZIG] Hardcore" {
+    try compareOutputZig(
+        testDirZig ++ "hardcore.l",
+        testDirC ++ "hardcore.l",
+        testDirC ++ "hardcore.lang",
     );
 }

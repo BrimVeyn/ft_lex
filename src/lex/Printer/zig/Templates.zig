@@ -258,7 +258,6 @@ pub const sectionSix =
 \\    }
 \\
 \\    yy_free_buffer();
-\\    yyin.?.close();
 \\    _ = yywrap();
 \\    return 0;
 \\}

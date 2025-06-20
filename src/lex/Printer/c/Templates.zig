@@ -149,8 +149,8 @@ pub const sectionTwo = \\
 \\
 \\// --- Core DFA scanning function ---
 \\int yylex(void) {
-\\    BEGIN(INITIAL);
-\\//Added if the scanner is used in reentrant mode
+\\    if (yy_buf_pos == 0) BEGIN(INITIAL);
+\\
 \\    if (yy_hold_char && !yy_hold_char_restored) {
 \\        yy_buffer[yy_buf_pos] = yy_hold_char;
 \\    }
@@ -158,6 +158,7 @@ pub const sectionTwo = \\
 \\    if (!yyin) yyin = stdin;
 \\    if (!yyout) yyout = stdout;
 \\
+\\find_rule:
 \\    while (1) {
 \\        int state = (yy_start & 0xFFFF);
 \\        int bol_state = YY_AT_BOL() ? YY_BOL() : -1;
