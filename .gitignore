@@ -8,3 +8,4 @@ experiments/test.graph
 src/test/lex/outputs/*
 src/libl/libl.o
 src/libl/libl.a
+graphs/*
