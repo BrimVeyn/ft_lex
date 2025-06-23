@@ -1,6 +1,6 @@
 # ft\_lex
 
-**ft\_lex** is a full-featured reimplementation of the classic `lex` utility, built as part of the 42 school curriculum. It adheres strictly to the [POSIX 2024 specification](https://pubs.opengroup.org/onlinepubs/9699919799/utilities/lex.html), covering all required features and bonus challenges.
+**ft\_lex** is a full-featured reimplementation of the classic `lex` utility, built as part of the 42 school curriculum. It adheres strictly to the [POSIX 2024 specification](https://pubs.opengroup.org/onlinepubs/9799919799/utilities/lex.html), covering all required features and bonus challenges.
 
 ---
 
@@ -98,7 +98,7 @@ Check the `examples/` directory for `.l` files demonstrating:
 
 ## 📚 References
 
-* [POSIX `lex` Specification (2024)](https://pubs.opengroup.org/onlinepubs/9699919799/utilities/lex.html)
+* [POSIX `lex` Specification (2024)](https://pubs.opengroup.org/onlinepubs/9799919799/utilities/lex.html)
 * Aho, Sethi, Ullman – *Compilers: Principles, Techniques, and Tools*
 * *flex* source code for comparison and compliance behavior
 
